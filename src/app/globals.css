@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light Mode */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f8;
+  --bg-tertiary: #ececf1;
+  --bg-input: #f7f7f8;
+  --border-primary: #e5e5e5;
+  --border-secondary: #d1d1d6;
+  --text-primary: #202123;
+  --text-secondary: #6e6e80;
+  --text-tertiary: #8e8ea0;
+  --text-placeholder: #8e8ea0;
+  --accent: #202123;
+  --accent-hover: #353740;
+  --error: #ef4444;
+}
+
+.dark {
+  /* Dark Mode - 눈 편한 톤 */
+  --bg-primary: #202123;
+  --bg-secondary: #2a2b32;
+  --bg-tertiary: #343541;
+  --bg-input: #2a2b32;
+  --border-primary: #3e3f4b;
+  --border-secondary: #4e4f5b;
+  --text-primary: #ececf1;
+  --text-secondary: #acacbe;
+  --text-tertiary: #6e6e80;
+  --text-placeholder: #6e6e80;
+  --accent: #ececf1;
+  --accent-hover: #d1d1d6;
+  --error: #f87171;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
 }
