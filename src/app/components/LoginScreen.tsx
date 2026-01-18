@@ -1,75 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-
-// ============================================
-// API 설정
-// ============================================
-const API_CONFIG = {
-    BASE_URL: 'http://localhost:8000/api',
-    USE_MOCK: true,
-};
-
-const MOCK_USERS = [
-    { email: 'student@jj.ac.kr', password: 'test1234', name: '김도모', is_student_verified: true },
-];
-
-const api = {
-    login: async (email: string, password: string) => {
-        if (API_CONFIG.USE_MOCK) {
-            await new Promise(r => setTimeout(r, 600));
-            const user = MOCK_USERS.find(u => u.email === email && u.password === password);
-            if (!user) throw new Error('이메일 또는 비밀번호가 일치하지 않습니다.');
-            if (!user.is_student_verified) throw new Error('이메일 인증이 완료되지 않았습니다.');
-            return { message: '로그인 성공', user: { email: user.email, name: user.name } };
-        }
-        const res = await fetch(`${API_CONFIG.BASE_URL}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ email, password }),
-        });
-        if (!res.ok) throw new Error((await res.json()).detail);
-        return res.json();
-    },
-
-    signup: async (email: string, password: string, name: string) => {
-        if (API_CONFIG.USE_MOCK) {
-            await new Promise(r => setTimeout(r, 600));
-            if (!email.endsWith('@jj.ac.kr')) throw new Error('전주대학교 이메일(@jj.ac.kr)만 사용 가능합니다.');
-            if (MOCK_USERS.some(u => u.email === email)) throw new Error('이미 가입된 이메일입니다.');
-            return { id: 999, email, name, is_student_verified: false };
-        }
-        const res = await fetch(`${API_CONFIG.BASE_URL}/auth/signup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, name }),
-        });
-        if (!res.ok) throw new Error((await res.json()).detail);
-        return res.json();
-    },
-
-    verify: async (email: string, code: string) => {
-        if (API_CONFIG.USE_MOCK) {
-            await new Promise(r => setTimeout(r, 400));
-            if (code === '123456') return { message: '이메일 인증이 완료되었습니다.' };
-            throw new Error('인증 코드가 일치하지 않거나 만료되었습니다.');
-        }
-        const res = await fetch(`${API_CONFIG.BASE_URL}/auth/verify`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, code }),
-        });
-        if (!res.ok) throw new Error((await res.json()).detail);
-        return res.json();
-    },
-};
+import { login, signup, verify, API_CONFIG } from '@/lib/api';
+import type { AuthUser } from '@/types';
 
 // ============================================
 // 컴포넌트
 // ============================================
 interface LoginScreenProps {
-    onLoginSuccess?: (user: { email: string; name: string }) => void;
+    onLoginSuccess?: (user: AuthUser) => void;
 }
 
 export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
@@ -77,13 +16,10 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [form, setForm] = useState({ email: '', password: '', name: '', code: '' });
-    const [isDark, setIsDark] = useState(true);
-
-    useEffect(() => {
-        // 시스템 다크모드 감지
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setIsDark(prefersDark);
-    }, []);
+    const [isDark, setIsDark] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    });
 
     useEffect(() => {
         document.documentElement.classList.toggle('dark', isDark);
@@ -99,7 +35,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         setIsLoading(true);
         setError('');
         try {
-            const result = await api.login(form.email, form.password);
+            const result = await login(form.email, form.password);
             onLoginSuccess?.(result.user);
         } catch (err) {
             setError(err instanceof Error ? err.message : '로그인 실패');
@@ -113,7 +49,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         setIsLoading(true);
         setError('');
         try {
-            await api.signup(form.email, form.password, form.name);
+            await signup(form.email, form.password, form.name);
             setView('verify');
         } catch (err) {
             setError(err instanceof Error ? err.message : '회원가입 실패');
@@ -127,7 +63,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         setIsLoading(true);
         setError('');
         try {
-            await api.verify(form.email, form.code);
+            await verify(form.email, form.code);
             setView('login');
             setForm(f => ({ ...f, password: '', code: '' }));
         } catch (err) {

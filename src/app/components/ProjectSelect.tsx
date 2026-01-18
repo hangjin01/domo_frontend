@@ -1,128 +1,25 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-
-// ============================================
-// API 설정
-// ============================================
-const API_CONFIG = {
-    BASE_URL: 'http://localhost:8000/api',
-    USE_MOCK: true,
-};
-
-const MOCK_PROJECTS = [
-    {
-        id: 1,
-        name: 'Domo 협업 플랫폼',
-        workspace: '캡스톤디자인',
-        role: 'PM',
-        progress: 65,
-        memberCount: 4,
-        lastActivity: '2분 전',
-        color: '#FEF3C7', // yellow
-    },
-    {
-        id: 2,
-        name: 'API 문서 작성',
-        workspace: '캡스톤디자인',
-        role: 'Frontend',
-        progress: 30,
-        memberCount: 4,
-        lastActivity: '1시간 전',
-        color: '#DBEAFE', // blue
-    },
-    {
-        id: 3,
-        name: '요구사항 분석',
-        workspace: '소프트웨어공학',
-        role: 'Researcher',
-        progress: 100,
-        memberCount: 3,
-        lastActivity: '1일 전',
-        color: '#FCE7F3', // pink
-    },
-];
-
-const api = {
-    getMyProjects: async () => {
-        if (API_CONFIG.USE_MOCK) {
-            await new Promise(r => setTimeout(r, 400));
-            return MOCK_PROJECTS;
-        }
-        const res = await fetch(`${API_CONFIG.BASE_URL}/workspaces`, {
-            credentials: 'include',
-        });
-        if (!res.ok) throw new Error('프로젝트 조회 실패');
-        const workspaces = await res.json();
-        // 모든 워크스페이스의 프로젝트를 합침
-        const allProjects: typeof MOCK_PROJECTS = [];
-        for (const ws of workspaces) {
-            const projRes = await fetch(`${API_CONFIG.BASE_URL}/workspaces/${ws.id}/projects`, {
-                credentials: 'include',
-            });
-            if (projRes.ok) {
-                const projects = await projRes.json();
-                projects.forEach((p: { id: number; name: string }) => {
-                    allProjects.push({
-                        ...p,
-                        workspace: ws.name,
-                        role: 'Member',
-                        progress: 0,
-                        memberCount: 0,
-                        lastActivity: '-',
-                        color: '#F3F4F6',
-                    });
-                });
-            }
-        }
-        return allProjects;
-    },
-
-    logout: async () => {
-        if (API_CONFIG.USE_MOCK) {
-            await new Promise(r => setTimeout(r, 200));
-            return { message: '로그아웃' };
-        }
-        const res = await fetch(`${API_CONFIG.BASE_URL}/auth/logout`, {
-            method: 'POST',
-            credentials: 'include',
-        });
-        return res.json();
-    },
-};
-
-// ============================================
-// 타입
-// ============================================
-interface Project {
-    id: number;
-    name: string;
-    workspace: string;
-    role: string;
-    progress: number;
-    memberCount: number;
-    lastActivity: string;
-    color: string;
-}
-
-interface ProjectSelectProps {
-    user: { email: string; name: string };
-    onSelectProject: (project: Project) => void;
-    onLogout: () => void;
-}
+import { getMyProjects, logout, API_CONFIG } from '@/lib/api';
+import type { Project, AuthUser } from '@/types';
 
 // ============================================
 // 컴포넌트
 // ============================================
+interface ProjectSelectProps {
+    user: AuthUser;
+    onSelectProject: (project: Project) => void;
+    onLogout: () => void;
+}
+
 export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelectProps) {
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isDark, setIsDark] = useState(true);
-
-    useEffect(() => {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setIsDark(prefersDark);
-    }, []);
+    const [isDark, setIsDark] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    });
 
     useEffect(() => {
         document.documentElement.classList.toggle('dark', isDark);
@@ -134,7 +31,7 @@ export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelect
 
     const loadProjects = async () => {
         try {
-            const data = await api.getMyProjects();
+            const data = await getMyProjects();
             setProjects(data);
         } catch (err) {
             console.error(err);
@@ -144,7 +41,7 @@ export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelect
     };
 
     const handleLogout = async () => {
-        await api.logout();
+        await logout();
         onLogout();
     };
 
@@ -183,8 +80,8 @@ export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelect
                     </button>
 
                     <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {user.name}
-          </span>
+                        {user.name}
+                    </span>
                     <button
                         onClick={handleLogout}
                         className="text-sm px-3 py-1.5 rounded-md transition-colors hover:bg-[var(--bg-secondary)]"
@@ -224,15 +121,15 @@ export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelect
                             >
                                 {/* 역할 태그 */}
                                 <div className="absolute top-4 left-4">
-                  <span
-                      className="text-xs px-2 py-1 rounded-md"
-                      style={{
-                          backgroundColor: isDark ? 'var(--bg-tertiary)' : 'rgba(0,0,0,0.1)',
-                          color: 'var(--text-secondary)',
-                      }}
-                  >
-                    {project.role}
-                  </span>
+                                    <span
+                                        className="text-xs px-2 py-1 rounded-md"
+                                        style={{
+                                            backgroundColor: isDark ? 'var(--bg-tertiary)' : 'rgba(0,0,0,0.1)',
+                                            color: 'var(--text-secondary)',
+                                        }}
+                                    >
+                                        {project.role}
+                                    </span>
                                 </div>
 
                                 <div className="p-5 pt-12">
@@ -265,12 +162,12 @@ export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelect
 
                                     {/* 메타 */}
                                     <div className="flex items-center justify-between text-xs">
-                    <span style={{ color: 'var(--text-tertiary)' }}>
-                      👥 {project.memberCount}
-                    </span>
                                         <span style={{ color: 'var(--text-tertiary)' }}>
-                      🕐 {project.lastActivity}
-                    </span>
+                                            👥 {project.memberCount}
+                                        </span>
+                                        <span style={{ color: 'var(--text-tertiary)' }}>
+                                            🕐 {project.lastActivity}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -284,18 +181,18 @@ export function ProjectSelect({ user, onSelectProject, onLogout }: ProjectSelect
                                 minHeight: '180px',
                             }}
                         >
-              <span
-                  className="text-3xl mb-2"
-                  style={{ color: 'var(--text-tertiary)' }}
-              >
-                +
-              </span>
+                            <span
+                                className="text-3xl mb-2"
+                                style={{ color: 'var(--text-tertiary)' }}
+                            >
+                                +
+                            </span>
                             <span
                                 className="text-sm"
                                 style={{ color: 'var(--text-tertiary)' }}
                             >
-                New Project
-              </span>
+                                New Project
+                            </span>
                         </div>
                     </div>
                 )}
