@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { LoginScreen } from "./LoginScreen";
-import { ProjectSelect } from "./ProjectSelect";
-import { BlueprintBoard } from "./board/BlueprintBoard";
-import type { Project, AuthUser } from "../../types";
+import { ProjectSelect } from "./ui/ProjectSelect";
+import { WorkspaceBoard } from "./board/WorkspaceBoard"; // BlueprintBoard -> WorkspaceBoard로 교체
+import type { Project, AuthUser } from "@/src/types";
 
 export default function Home() {
     const [user, setUser] = useState<AuthUser | null>(null);
@@ -43,9 +43,9 @@ export default function Home() {
         );
     }
 
-    // 3. 프로젝트 선택됨 → 블루프린트 보드
+    // 3. 프로젝트 선택됨 → 워크스페이스 보드 (우리가 수정한 파일)
     return (
-        <BlueprintBoard
+        <WorkspaceBoard
             project={selectedProject}
             onBack={handleBackToProjects}
         />

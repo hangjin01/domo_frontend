@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Task, Comment, Tag as TagType } from '../../types';
-import { STICKY_COLORS, getStickyStyle } from '../../lib/canvasUtils.ts';
+import { Task, Comment, Tag as TagType } from '../../../types';
+import { STICKY_COLORS, getStickyStyle } from '../../../lib/utils/canvas.ts';
 import { 
   CreditCard, Palette, X, Briefcase, FileText, StickyNote, AlignLeft, 
   Paperclip, Download, List, Bookmark, Tag, Clock, Plus, CheckSquare, ChevronRight 

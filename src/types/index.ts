@@ -1,17 +1,85 @@
+// src/types/index.ts
 
-import { Modality } from "@google/genai";
+// ============================================
+// 1. 공통/기본 타입 (User, Auth)
+// ============================================
+
+export interface User {
+  id: number | string;
+  email: string;
+  name: string;
+  is_student_verified?: boolean;
+}
+
+export interface AuthUser {
+  email: string;
+  name: string;
+}
+
+export interface Member {
+  id: number | string;
+  name: string;
+  email: string;
+  isOnline: boolean;
+  role: string;
+  avatar?: string | null;
+}
+
+export interface Assignee {
+  id: number | string;
+  name: string;
+  avatar: string | null;
+}
+
+// ============================================
+// 2. 워크스페이스 & 프로젝트
+// ============================================
+
+export interface Project {
+  id: number | string;
+  name: string;
+  workspace: string;
+  role: string;
+  progress: number;
+  memberCount: number;
+  lastActivity: string;
+  color: string;
+  description?: string;
+}
+
+export interface ProjectSummary {
+  id: number;
+  name: string;
+  progress: number;
+  memberCount: number;
+  lastActivity: string;
+}
+
+export interface Workspace {
+  id: number | string;
+  name: string;
+  description: string;
+  owner_id: number | string;
+  projects: Project[];
+}
+
+// ============================================
+// 3. 보드 / 태스크 / 노드
+// ============================================
+
+export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings';
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
 
 export interface Comment {
   id: string;
   user: string;
   text: string;
   timestamp: string;
-}
-
-export interface Tag {
-  id: string;
-  name: string;
-  color: string;
 }
 
 export interface TaskFile {
@@ -22,9 +90,9 @@ export interface TaskFile {
 }
 
 export interface Task {
-  id: string;
+  id: string | number;
   title: string;
-  status: 'inbox' | 'todo' | 'doing' | 'done';
+  status: 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done' | string;
   time?: string;
   color?: string;
   tags?: Tag[];
@@ -34,12 +102,26 @@ export interface Task {
   x?: number;
   y?: number;
   boardId?: string;
-  taskType?: number; // 0: Work, 1: Memo, 2: File/Folder
+  taskType?: number;
   project?: string;
   dueTime?: string;
+  assignee?: User | Assignee;
+  assignees?: Assignee[];
+  priority?: 'low' | 'medium' | 'high';
+  dueDate?: string;
 }
 
-export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings';
+export interface Node {
+  id: number | string;
+  title: string;
+  status: 'todo' | 'in-progress' | 'done' | string;
+  x: number;
+  y: number;
+  assignees: Assignee[];
+  boardId?: string;
+  description?: string;
+  project?: string;
+}
 
 export interface Column {
   id: string;
@@ -57,80 +139,56 @@ export interface Connection {
 }
 
 export interface Group {
-    id: string;
-    title: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    boardId?: string;
+  id: string;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  boardId?: string;
 }
 
 export interface Board {
-    id: string;
-    title: string;
-}
-
-// Auth & Workspace Types
-export interface User {
-  id: number;
-  email: string;
-  name: string;
-  is_student_verified?: boolean;
-}
-
-export interface AuthUser {
-  email: string;
-  name: string;
-}
-
-export interface Member {
-  id: number;
-  name: string;
-  email: string;
-  isOnline: boolean;
-  role: string;
-  avatar?: string | null;
-}
-
-export interface Project {
-  id: number;
-  name: string;
-  workspace: string;
-  role: string;
-  progress: number;
-  memberCount: number;
-  lastActivity: string;
-  color: string;
-}
-
-export interface Workspace {
-  id: number;
-  name: string;
-  description: string;
-  owner_id: number;
-  projects: Project[];
-}
-
-export interface Node {
-  id: number;
+  id: string;
   title: string;
-  status: 'todo' | 'in-progress' | 'done';
-  x: number;
-  y: number;
-  assignees: Assignee[];
-}
-
-export interface Assignee {
-  id: number;
-  name: string;
-  avatar: string | null;
 }
 
 export interface EditingCard {
-  id: number;
+  id: number | string;
   title: string;
   user: string;
+}
+
+// ============================================
+// 4. 파일 관련 (기존 코드 보존)
+// ============================================
+
+export interface FileItem {
+  id: number;
+  name: string;
+  size: number;
+  type: string;
+  uploadedAt: string;
+  uploadedBy: User;
+  versions?: FileVersion[];
+}
+
+export interface FileVersion {
+  id: number;
+  version: number;
+  uploadedAt: string;
+  uploadedBy: User;
+  size: number;
+}
+
+// ============================================
+// 5. API 응답 타입
+// ============================================
+
+export interface ApiResponse<T> {
+  data?: T;
+  message?: string;
+  error?: string;
 }
 
 export interface LoginResponse {
@@ -149,53 +207,11 @@ export interface VerifyResponse {
   message: string;
 }
 
-// Gemini Types
-export enum AppMode {
-  Chat = 'chat',
-  Vision = 'vision',
-  Live = 'live',
-  Create = 'create'
-}
-
-export interface Message {
-  id: string;
-  role: 'user' | 'model';
-  text: string;
-  timestamp: number;
-  isLoading?: boolean;
-  groundingSources?: Array<{
-    title?: string;
-    uri?: string;
-  }>;
-  images?: string[];
-}
-
-export interface VideoGenerationStatus {
-  isGenerating: boolean;
-  progressMessage?: string;
-  videoUri?: string;
-  error?: string;
-}
-
-export type LiveConfig = {
-  model: string;
-  responseModalities: [Modality];
-  speechConfig: {
-    voiceConfig: {
-      prebuiltVoiceConfig: {
-        voiceName: string;
-      }
-    }
-  };
-  systemInstruction?: string;
-};
+// ============================================
+// 7. Global Declarations
+// ============================================
 
 declare global {
-  interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-  }
-
   interface Window {
     webkitAudioContext: typeof AudioContext;
   }

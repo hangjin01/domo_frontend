@@ -190,6 +190,16 @@ export const MOCK_NODES: Node[] = [
     y: 150,
     assignees: [],
   },
+  {
+    id: 999, // ID는 겹치지 않게
+    title: '프로젝트 시작',
+    status: 'todo',
+    x: 100,
+    y: 300, // 위치 겹치지 않게 조정
+    boardId: 'board-1',
+    description: 'DOMO 협업 플랫폼에 오신 것을 환영합니다!',
+    assignees: [],
+  }
 ];
 
 export const MOCK_CONNECTIONS: Connection[] = [

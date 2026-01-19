@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getMyProjects, logout } from '../../lib/api';
-import type { Project, AuthUser } from '../../types';
+import { getMyProjects, logout } from '../../../lib/api';
+import type { Project, AuthUser } from '../../../types';
 import { 
   LogOut, 
   Plus, 

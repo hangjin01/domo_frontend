@@ -3,8 +3,8 @@
 
 import { useState } from "react";
 import { LoginScreen } from "./components/LoginScreen";
-import { ProjectSelect } from "./components/ProjectSelect";
-import { WorkspaceBoard } from "./components/WorkspaceBoard";
+import { ProjectSelect } from "@/src/app/components/ui/ProjectSelect.tsx";
+import { WorkspaceBoard } from "@/src/app/components/board/WorkspaceBoard.tsx";
 import type { Project, AuthUser } from "../types/index";
 
 export default function Home() {

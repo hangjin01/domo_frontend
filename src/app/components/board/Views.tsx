@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Task } from '../../types';
-import { getStickyStyle } from '../../lib/canvasUtils.ts';
+import { Task } from '../../../types';
+import { getStickyStyle } from '../../../lib/utils/canvas.ts';
 import { 
   Settings, Sun, Moon, Bell, Shield, ChevronRight, Mail, LogOut, StretchHorizontal, ChevronLeft 
 } from 'lucide-react';
@@ -224,7 +224,8 @@ export const TimelineView = ({ tasks, onTaskSelect }: { tasks: Task[], onTaskSel
                {tasks.map(task => {
                    const pos = getTaskPosition(task);
                    const isCustom = task.color?.startsWith('#');
-                   const stickyColor = !isCustom ? getStickyStyle(task.id, task.color) : null;
+                   // String(...) 으로 감싸서 "무조건 문자로 바꿔서 줄게!" 라고 안심시키기
+                   const stickyColor = !isCustom ? getStickyStyle(String(task.id), task.color) : null;
                    return (
                        <div key={task.id} className="flex hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-gray-800/50 group/row">
                            <div className="sticky left-0 z-10 flex bg-white dark:bg-[#16181D] group-hover/row:bg-gray-50 dark:group-hover/row:bg-[#1E212B] transition-colors border-r border-gray-200 dark:border-gray-800 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">

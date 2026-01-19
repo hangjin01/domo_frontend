@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { Task, Connection, Board, Group, TaskFile } from '../../types';
+import { Task, Connection, Board, Group, TaskFile } from '../../../types';
 import { TaskCard } from '../ui/TaskCard.tsx';
 import {
     Plus, Trello, ChevronDown, Check, Pencil, X, MousePointer2, Layers, Spline, Activity, Trash2, FilePlus, Clipboard,

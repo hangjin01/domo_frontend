@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Task } from '../../types';
-import { getStickyStyle, getContrastColor } from '../../lib/canvasUtils.ts';
+import { Task } from '../../../types';
+import { getStickyStyle, getContrastColor } from '../../../lib/utils/canvas.ts';
 import { 
   FolderOpen, FileText, Download, Folder, Clock, AlignLeft, Paperclip, MoreHorizontal, ChevronRight 
 } from 'lucide-react';

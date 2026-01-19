@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { Mic, Send, X, Sparkles, Loader2, StopCircle } from 'lucide-react';
-import { createPcmBlob } from '../../../lib/audioUtils';
+import { createPcmBlob } from '../../../lib/utils/audio.ts';
 
 interface GeminiHubProps {
   onClose: () => void;

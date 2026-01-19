@@ -1,15 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Project } from '../../types';
-import { Task, Connection, Board, Group, ViewMode } from '../../types';
-import { BoardCanvas } from './BoardCanvas.tsx';
-import { CalendarView, TimelineView, SettingsView } from './Views.tsx';
-import { TaskDetailModal } from '../ui/TaskDetailModal.tsx';
-import { Mascot } from '../ui/Mascot.tsx';
+import { Project, Task, Connection, Board, Group, ViewMode } from '@/src/types'; // 타입 경로는 프로젝트 설정에 따름 (에러나면 ../../types 로 수정)
+import { BoardCanvas } from './BoardCanvas';
+import { CalendarView, TimelineView, SettingsView } from './Views';
+import { TaskDetailModal } from '../ui/TaskDetailModal';
+import { Mascot } from '../ui/Mascot';
+
+// [수정] 상대 경로로 API 데이터와 유틸리티 불러오기
+import { MOCK_NODES, MOCK_CONNECTIONS } from '@/src/lib/api';
+
 import {
     Trello, Calendar as CalendarIcon, StretchHorizontal, Settings,
-    ChevronLeft, ChevronRight, Sun, Moon, ArrowLeft, Grid
+    ChevronLeft, ChevronRight, ArrowLeft
 } from 'lucide-react';
 
 interface WorkspaceBoardProps {
@@ -18,10 +21,12 @@ interface WorkspaceBoardProps {
 }
 
 export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack }) => {
-    const [tasks, setTasks] = useState<Task[]>([
-        { id: '1', title: '프로젝트 시작', status: 'todo', x: 100, y: 100, boardId: 'board-1', color: 'yellow', taskType: 1, description: `${project.name}에 오신 것을 환영합니다!` }
-    ]);
-    const [connections, setConnections] = useState<Connection[]>([]);
+    // [수정] 하드코딩 제거하고 MOCK_NODES 연동 (타입 호환을 위해 변환)
+    const [tasks, setTasks] = useState<Task[]>(MOCK_NODES as unknown as Task[]);
+
+    // [수정] MOCK_CONNECTIONS 연동
+    const [connections, setConnections] = useState<Connection[]>(MOCK_CONNECTIONS);
+
     const [boards, setBoards] = useState<Board[]>([{ id: 'board-1', title: '메인 보드' }]);
     const [activeBoardId, setActiveBoardId] = useState('board-1');
     const [groups, setGroups] = useState<Group[]>([]);
@@ -139,9 +144,6 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                     {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={setSelectedTask} />}
                     {viewMode === 'timeline' && <TimelineView tasks={tasks} onTaskSelect={setSelectedTask} />}
                     {viewMode === 'settings' && <SettingsView />}
-
-                    {/* Controls Overlay */}
-                    {/* Controls Overlay Removed */}
                 </div>
             </div>
 
@@ -159,3 +161,5 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         </div>
     );
 }
+
+export default WorkspaceBoard;
