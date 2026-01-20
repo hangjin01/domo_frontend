@@ -27,8 +27,8 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // [수정] MOCK_CONNECTIONS 연동
     const [connections, setConnections] = useState<Connection[]>(MOCK_CONNECTIONS);
 
-    const [boards, setBoards] = useState<Board[]>([{ id: 'board-1', title: '메인 보드' }]);
-    const [activeBoardId, setActiveBoardId] = useState('board-1');
+    const [boards, setBoards] = useState<Board[]>([{ id: 1, title: '메인 보드' }]);
+    const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
     const [viewMode, setViewMode] = useState<ViewMode>('board');
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -37,7 +37,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
 
     const handleBoardTasksUpdate = (boardTasks: Task[]) => {
         setTasks(prev => {
-            const other = prev.filter(t => t.boardId !== activeBoardId);
+            const other = prev.filter(t => String(t.boardId) !== String(activeBoardId));
             return [...other, ...boardTasks];
         });
     };
@@ -117,23 +117,36 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                 <div className="bg-white/40 dark:bg-black/40 backdrop-blur-3xl rounded-[2rem] border border-white/20 dark:border-white/5 shadow-inner h-full overflow-hidden relative">
                     {viewMode === 'board' && (
                         <BoardCanvas
-                            tasks={tasks.filter(t => t.boardId === activeBoardId)}
-                            connections={connections.filter(c => c.boardId === activeBoardId)}
+                            tasks={tasks.filter(t => String(t.boardId) === String(activeBoardId))}
+                            connections={connections.filter(c => String(c.boardId) === String(activeBoardId))}
                             onTasksUpdate={handleBoardTasksUpdate}
                             onTaskSelect={setSelectedTask}
-                            onConnectionCreate={(from, to) => setConnections([...connections, { id: Date.now().toString(), from, to, boardId: activeBoardId, style: 'solid', shape: 'bezier' }])}
-                            onConnectionDelete={(id) => setConnections(connections.filter(c => c.id !== id))}
-                            onConnectionUpdate={(id, updates) => setConnections(connections.map(c => c.id === id ? { ...c, ...updates } : c))}
+                            onConnectionCreate={(from, to) => setConnections([...connections, { id: Date.now(), from, to, boardId: String(activeBoardId), style: 'solid', shape: 'bezier' }])}
+                            onConnectionDelete={(id) => setConnections(connections.filter(c => String(c.id) !== String(id)))}
+                            onConnectionUpdate={(id, updates) => setConnections(connections.map(c => String(c.id) === String(id) ? { ...c, ...updates } : c))}
                             boards={boards}
-                            activeBoardId={activeBoardId}
-                            onSwitchBoard={setActiveBoardId}
-                            onAddBoard={(name) => { const newId = Date.now().toString(); setBoards([...boards, { id: newId, title: name }]); setActiveBoardId(newId); }}
-                            onRenameBoard={(id, name) => setBoards(boards.map(b => b.id === id ? { ...b, title: name } : b))}
+
+                            // 자식에게 넘길 때는 String으로 변환 (자식 props 타입에 맞춤)
+                            activeBoardId={String(activeBoardId)}
+
+                            // 자식에서 받은 ID(문자)를 숫자(상태)로 변환
+                            onSwitchBoard={(id) => setActiveBoardId(Number(id))}
+
+                            // 새 보드 ID는 숫자(Date.now())로 생성해야 Board 타입과 일치함
+                            onAddBoard={(name) => {
+                                const newId = Date.now(); // .toString() 제거 (숫자로 유지)
+                                setBoards([...boards, { id: newId, title: name }]);
+                                setActiveBoardId(newId);
+                            }}
+
+                            // ID 비교 시 숫자로 변환
+                            onRenameBoard={(id, name) => setBoards(boards.map(b => b.id === Number(id) ? { ...b, title: name } : b))}
+
                             snapToGrid={snapToGrid}
-                            groups={groups.filter(g => g.boardId === activeBoardId)}
+                            groups={groups.filter(g => String(g.boardId) === String(activeBoardId))}
                             onGroupsUpdate={(updatedGroups) => {
                                 setGroups(prev => {
-                                    const otherGroups = prev.filter(g => g.boardId !== activeBoardId);
+                                    const otherGroups = prev.filter(g => String(g.boardId) !== String(activeBoardId));
                                     return [...otherGroups, ...updatedGroups];
                                 });
                             }}

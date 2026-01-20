@@ -203,11 +203,11 @@ export const MOCK_NODES: Node[] = [
 ];
 
 export const MOCK_CONNECTIONS: Connection[] = [
-  { id: 'c1', from: 1, to: 2 },
-  { id: 'c2', from: 1, to: 3 },
-  { id: 'c3', from: 2, to: 4 },
-  { id: 'c4', from: 3, to: 4 },
-  { id: 'c5', from: 4, to: 5 },
+  { id: 1, from: 1, to: 2 },
+  { id: 2, from: 1, to: 3 },
+  { id: 3, from: 2, to: 4 },
+  { id: 4, from: 3, to: 4 },
+  { id: 5, from: 4, to: 5 },
 ];
 
 // ============================================

@@ -219,11 +219,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
                   {task.tags && task.tags.length > 0 && (
                       task.tags.map(tag => {
-                          const colorStyle = getStickyStyle(tag.id, tag.color);
+                          const colorStyle = getStickyStyle(String(tag.id), tag.color);
                           return (
                               <div key={tag.id} className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold border ${colorStyle ? colorStyle.bg : 'bg-gray-100'} ${colorStyle ? colorStyle.text : 'text-gray-800'} ${colorStyle ? colorStyle.border : 'border-gray-200'}`}>
                                   <span>{tag.name}</span>
-                                  <button onClick={() => removeTag(tag.id)} className="hover:bg-black/10 rounded-full p-0.5"><X size={10} /></button>
+                                  <button onClick={() => removeTag(String(tag.id))} className="hover:bg-black/10 rounded-full p-0.5"><X size={10} /></button>
                               </div>
                           );
                       })

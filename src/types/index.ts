@@ -48,7 +48,7 @@ export interface Project {
 }
 
 export interface ProjectSummary {
-  id: number;
+  id: number | string;
   name: string;
   progress: number;
   memberCount: number;
@@ -70,13 +70,13 @@ export interface Workspace {
 export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings';
 
 export interface Tag {
-  id: string;
+  id: number | string;
   name: string;
   color: string;
 }
 
 export interface Comment {
-  id: string;
+  id: number | string;
   user: string;
   text: string;
   timestamp: string;
@@ -90,7 +90,7 @@ export interface TaskFile {
 }
 
 export interface Task {
-  id: string | number;
+  id: number | string;
   title: string;
   status: 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done' | string;
   time?: string;
@@ -101,7 +101,9 @@ export interface Task {
   files?: TaskFile[];
   x?: number;
   y?: number;
-  boardId?: string;
+
+  boardId?: string | number;
+
   taskType?: number;
   project?: string;
   dueTime?: string;
@@ -118,38 +120,38 @@ export interface Node {
   x: number;
   y: number;
   assignees: Assignee[];
-  boardId?: string;
+  boardId?: string | number;
   description?: string;
   project?: string;
 }
 
 export interface Column {
-  id: string;
+  id: number | string;
   title: string;
   status: Task['status'];
 }
 
 export interface Connection {
-  id: string;
+  id: number | string;
   from: string | number;
   to: string | number;
   shape?: 'bezier' | 'straight';
   style?: 'solid' | 'dashed';
-  boardId?: string;
+  boardId?: string | number;
 }
 
 export interface Group {
-  id: string;
+  id: string | number;
   title: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  boardId?: string;
+  boardId?: string | number;
 }
 
 export interface Board {
-  id: string;
+  id: number | string;
   title: string;
 }
 
@@ -164,7 +166,7 @@ export interface EditingCard {
 // ============================================
 
 export interface FileItem {
-  id: number;
+  id: number | string;
   name: string;
   size: number;
   type: string;
@@ -174,7 +176,7 @@ export interface FileItem {
 }
 
 export interface FileVersion {
-  id: number;
+  id: number | string;
   version: number;
   uploadedAt: string;
   uploadedBy: User;
@@ -197,7 +199,7 @@ export interface LoginResponse {
 }
 
 export interface SignupResponse {
-  id: number;
+  id: number | string;
   email: string;
   name: string;
   is_student_verified: boolean;

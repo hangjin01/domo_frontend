@@ -29,7 +29,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   
   const handleDragStart = (e: React.DragEvent) => {
     if (variant !== 'sticky') {
-        e.dataTransfer.setData('taskId', task.id);
+        e.dataTransfer.setData('taskId', String(task.id));
         e.dataTransfer.effectAllowed = 'move';
     } else {
         e.preventDefault();
@@ -75,7 +75,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     if (isFolder && isExpanded) {
         return (
             <div 
-              id={`task-${task.id}`}
+              id={`task-${String(task.id)}`}
               draggable
               onDragStart={handleDragStart}
               onPointerDown={onPointerDown}
@@ -116,15 +116,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                  {/* Connection Handles */}
                 <div 
                     className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(String(task.id), e); }}
+                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(String(task.id)); }}
                 >
                     <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                 </div>
                 <div 
                     className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(String(task.id), e); }}
+                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(String(task.id)); }}
                 >
                     <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                 </div>
@@ -135,7 +135,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     // COLLAPSED / SINGLE FILE VIEW
     return (
         <div 
-          id={`task-${task.id}`}
+          id={`task-${String(task.id)}`}
           draggable
           onDragStart={handleDragStart}
           onPointerDown={onPointerDown}
@@ -179,15 +179,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 {/* Connection Handles */}
                 <div 
                     className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(String(task.id), e); }}
+                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(String(task.id)); }}
                 >
                     <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                 </div>
                 <div 
                     className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform opacity-0 group-hover:opacity-100 z-20 flex items-center justify-center group/handle"
-                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                    onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(String(task.id), e); }}
+                    onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(String(task.id)); }}
                 >
                     <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                 </div>
@@ -201,7 +201,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
   // --- STANDARD CARD RENDER ---
   const isCustomColor = task.color?.startsWith('#');
-  const stickyStyle = !isCustomColor && variant === 'sticky' ? getStickyStyle(task.id, task.color) : null;
+  const stickyStyle = !isCustomColor && variant === 'sticky' ? getStickyStyle(String(task.id), task.color) : null;
 
   let cardClasses = "group rounded-lg cursor-grab active:cursor-grabbing transition-shadow relative backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-domo-primary focus:ring-offset-2 dark:focus:ring-offset-[#1E212B] ";
   
@@ -241,7 +241,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
   return (
     <div 
-      id={`task-${task.id}`}
+      id={`task-${String(task.id)}`}
       draggable={variant !== 'sticky'}
       onDragStart={handleDragStart}
       onPointerDown={onPointerDown}
@@ -268,7 +268,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {/* ATTACH FILE BUTTON */}
             <button 
-                onClick={(e) => { e.stopPropagation(); onAttachFile?.(task.id); }}
+                onClick={(e) => { e.stopPropagation(); onAttachFile?.(String(task.id)); }}
                 className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors"
                 title="Attach File"
             >
@@ -326,7 +326,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 </span>
               )}
               {task.tags && task.tags.length > 0 && task.tags.map(tag => {
-                const colorStyle = getStickyStyle(tag.id, tag.color);
+                const colorStyle = getStickyStyle(String(tag.id), tag.color);
                 return (
                     <span 
                       key={tag.id} 
@@ -360,15 +360,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         <>
             <div 
                 className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform z-20 flex items-center justify-center group/handle"
-                onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(String(task.id), e); }}
+                onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(String(task.id)); }}
             >
                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
             </div>
             <div 
                 className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm cursor-crosshair hover:scale-125 transition-transform z-20 flex items-center justify-center group/handle"
-                onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(task.id, e); }}
-                onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(task.id); }}
+                onPointerDown={(e) => { e.stopPropagation(); onConnectStart?.(String(task.id), e); }}
+                onPointerUp={(e) => { e.stopPropagation(); onConnectEnd?.(String(task.id)); }}
             >
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
             </div>

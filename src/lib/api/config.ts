@@ -3,8 +3,10 @@
 // ============================================
 
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
-  USE_MOCK: process.env.NEXT_PUBLIC_USE_MOCK !== 'false', // 기본값 true
+  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api',
+  // 수정: 'false'가 아닐 때 true (기본값 true)
+  // NEXT_PUBLIC_USE_MOCK=false 로 설정해야 mock 비활성화
+  USE_MOCK: process.env.NEXT_PUBLIC_USE_MOCK !== 'false',
 } as const;
 
 // ============================================
@@ -19,8 +21,8 @@ interface FetchOptions extends RequestInit {
  * 기본 fetch 래퍼 - 공통 에러 처리 및 타임아웃 지원
  */
 export async function apiFetch<T>(
-  endpoint: string,
-  options: FetchOptions = {}
+    endpoint: string,
+    options: FetchOptions = {}
 ): Promise<T> {
   const { timeout = 10000, ...fetchOptions } = options;
 
