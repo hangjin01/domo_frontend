@@ -43,9 +43,12 @@ export {
   // 컬럼
   getColumns,
   createColumn,
-  // 태스크
+  // 보드
   getBoard,
+  // 태스크
   getTasks,
+  getAllCards,
+  getBoardCards,
   getTask,
   createTask,
   updateTask,

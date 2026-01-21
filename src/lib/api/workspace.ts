@@ -303,27 +303,6 @@ export async function createProject(
     body: JSON.stringify({ name, description }),
   });
 
-  // ✅ 프로젝트 생성 후 기본 컬럼 3개 생성
-  const defaultColumns = [
-    { title: '할 일', order: 0 },
-    { title: '진행 중', order: 1 },
-    { title: '완료', order: 2 },
-  ];
-
-  try {
-    await Promise.all(
-        defaultColumns.map(col =>
-            apiFetch(`/projects/${response.id}/columns`, {
-              method: 'POST',
-              body: JSON.stringify(col),
-            })
-        )
-    );
-    console.log('✅ 기본 컬럼 3개 생성 완료');
-  } catch (err) {
-    console.warn('⚠️ 기본 컬럼 생성 실패 (이미 존재할 수 있음):', err);
-  }
-
   // 워크스페이스 이름 조회
   let workspaceName = '워크스페이스';
   try {

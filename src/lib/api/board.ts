@@ -72,9 +72,20 @@ interface BackendConnectionResponse {
  */
 function inferStatusFromColumn(columnTitle: string): Task['status'] {
   const lower = columnTitle.toLowerCase();
+
+  // 완료 상태
   if (lower.includes('done') || lower.includes('완료')) return 'done';
-  if (lower.includes('doing') || lower.includes('진행')) return 'in-progress';
+
+  // 진행 중 상태 - 다양한 표현 지원
+  if (lower.includes('doing') ||
+      lower.includes('progress') ||
+      lower.includes('진행') ||
+      lower.includes('작업')) return 'in-progress';
+
+  // 수신함/인박스
   if (lower.includes('inbox') || lower.includes('수신')) return 'inbox';
+
+  // 기본값: todo
   return 'todo';
 }
 
@@ -287,15 +298,32 @@ export async function getBoard(projectId: number): Promise<{ column: Column; car
 // ============================================
 
 /**
- * 프로젝트의 태스크 목록 조회
+ * 프로젝트의 모든 카드 조회 (컬럼 유무 상관없이)
+ * GET /api/projects/{project_id}/cards
  */
-export async function getTasks(projectId: number): Promise<Task[]> {
+export async function getAllCards(projectId: number): Promise<Task[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
     return MOCK_TASKS.filter(t => t.boardId === projectId || projectId === 1);
   }
 
-  // 실제 API: 프로젝트의 보드 데이터 조회 후 카드 추출
+  const response = await apiFetch<BackendCardResponse[]>(
+      `/projects/${projectId}/cards`
+  );
+
+  return response.map(card => mapBackendCardToTask(card, projectId, 'backlog'));
+}
+
+/**
+ * 프로젝트의 보드 카드 조회 (컬럼에 속한 카드만)
+ * GET /api/projects/{project_id}/board
+ */
+export async function getBoardCards(projectId: number): Promise<Task[]> {
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(300);
+    return MOCK_TASKS.filter(t => t.boardId === projectId || projectId === 1);
+  }
+
   const response = await apiFetch<{ column: BackendColumnResponse; cards: BackendCardResponse[] }[]>(
       `/projects/${projectId}/board`
   );
@@ -304,6 +332,39 @@ export async function getTasks(projectId: number): Promise<Task[]> {
   return response.flatMap(item =>
       item.cards.map(card => mapBackendCardToTask(card, projectId, item.column.title))
   );
+}
+
+/**
+ * 프로젝트의 태스크 목록 조회 (모든 카드 - 중복 제거)
+ * 컬럼에 속한 카드 + 컬럼 없는 카드 모두 포함
+ */
+export async function getTasks(projectId: number): Promise<Task[]> {
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(300);
+    return MOCK_TASKS.filter(t => t.boardId === projectId || projectId === 1);
+  }
+
+  // 모든 카드 조회 (컬럼 유무 상관없이)
+  const allCards = await apiFetch<BackendCardResponse[]>(
+      `/projects/${projectId}/cards`
+  );
+
+  // 보드 데이터도 조회 (컬럼 정보를 얻기 위해)
+  const boardData = await apiFetch<{ column: BackendColumnResponse; cards: BackendCardResponse[] }[]>(
+      `/projects/${projectId}/board`
+  );
+
+  // 컬럼 ID → 컬럼 제목 매핑 생성
+  const columnTitleMap = new Map<number, string>();
+  boardData.forEach(item => {
+    columnTitleMap.set(item.column.id, item.column.title);
+  });
+
+  // 모든 카드를 Task로 변환 (컬럼 제목 매핑 적용)
+  return allCards.map(card => {
+    const columnTitle = card.column_id ? columnTitleMap.get(card.column_id) || 'backlog' : 'backlog';
+    return mapBackendCardToTask(card, projectId, columnTitle);
+  });
 }
 
 /**
@@ -327,9 +388,11 @@ export async function getTask(taskId: number): Promise<Task> {
 
 /**
  * 태스크 생성
+ * @param projectId - 프로젝트 ID (boardId)
+ * @param task - 생성할 태스크 데이터 (column_id 포함)
  */
 export async function createTask(
-    columnId: number,
+    projectId: number,
     task: Omit<Task, 'id'>
 ): Promise<Task> {
   if (API_CONFIG.USE_MOCK) {
@@ -341,11 +404,14 @@ export async function createTask(
     } as Task;
   }
 
-  const response = await apiFetch<BackendCardResponse>(`/columns/${columnId}/cards`, {
+  // 백엔드: POST /api/projects/{project_id}/cards
+  const response = await apiFetch<BackendCardResponse>(`/projects/${projectId}/cards`, {
     method: 'POST',
     body: JSON.stringify({
       title: task.title,
       content: task.content || task.description,
+      column_id: task.column_id || null,  // 컬럼 ID는 body에 포함
+      order: 0,
       x: task.x,
       y: task.y,
       assignee_ids: task.assignees?.map(a => a.id) || [],
@@ -355,7 +421,7 @@ export async function createTask(
     }),
   });
 
-  return mapBackendCardToTask(response, task.boardId, 'todo');
+  return mapBackendCardToTask(response, projectId, 'todo');
 }
 
 /**
@@ -540,11 +606,12 @@ export async function createConnection(
     };
   }
 
+  // 백엔드는 from_card_id, to_card_id로 받음 (alias: from, to)
   const response = await apiFetch<BackendConnectionResponse>(`/cards/connections`, {
     method: 'POST',
     body: JSON.stringify({
-      from: connection.from,
-      to: connection.to,
+      from: connection.from,  // 백엔드 스키마에서 alias="from"으로 받음
+      to: connection.to,      // 백엔드 스키마에서 alias="to"로 받음
       style: connection.style || 'solid',
       shape: connection.shape || 'bezier',
     }),

@@ -14,6 +14,7 @@ import {
     getTasks,
     getConnections,
     getColumns,
+    createColumn,
     createTask,
     updateTask,
     deleteTask,
@@ -56,6 +57,73 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     const [isSaving, setIsSaving] = useState(false);
 
     // =========================================
+    // 컬럼 → Group 변환 상수
+    // =========================================
+    const CARD_WIDTH = 280;
+    const CARD_HEIGHT = 120;
+    const GROUP_PADDING = 40;
+    const GROUP_HEADER = 50;
+    const COLUMN_GAP = 100;
+    const DEFAULT_GROUP_WIDTH = 320;
+    const DEFAULT_GROUP_HEIGHT = 200;
+
+    // =========================================
+    // 컬럼 + 카드 위치 기반으로 Group 영역 계산
+    // =========================================
+    const generateGroupsFromColumns = (
+        columnsData: Column[],
+        tasksData: Task[]
+    ): Group[] => {
+        const sortedColumns = [...columnsData].sort((a, b) => a.order - b.order);
+        let currentX = GROUP_PADDING;
+
+        return sortedColumns.map((column) => {
+            const columnTasks = tasksData.filter(task => task.column_id === column.id);
+
+            let groupX: number;
+            let groupY: number;
+            let groupWidth: number;
+            let groupHeight: number;
+
+            if (columnTasks.length === 0) {
+                // 카드가 없으면 기본 크기로 배치
+                groupX = currentX;
+                groupY = GROUP_PADDING + GROUP_HEADER; // 헤더 공간 확보
+                groupWidth = DEFAULT_GROUP_WIDTH;
+                groupHeight = DEFAULT_GROUP_HEIGHT;
+            } else {
+                // 카드들의 min/max 좌표로 영역 계산
+                const minX = Math.min(...columnTasks.map(t => t.x));
+                const maxX = Math.max(...columnTasks.map(t => t.x + CARD_WIDTH));
+                const minY = Math.min(...columnTasks.map(t => t.y));
+                const maxY = Math.max(...columnTasks.map(t => t.y + CARD_HEIGHT));
+
+                groupX = Math.max(0, minX - GROUP_PADDING); // 음수 방지
+                groupY = Math.max(0, minY - GROUP_PADDING - GROUP_HEADER); // 음수 방지
+                groupWidth = Math.max(maxX - minX + GROUP_PADDING * 2, DEFAULT_GROUP_WIDTH);
+                groupHeight = Math.max(maxY - minY + GROUP_PADDING * 2 + GROUP_HEADER, DEFAULT_GROUP_HEIGHT);
+            }
+
+            // 다음 컬럼 시작 위치
+            currentX = groupX + groupWidth + COLUMN_GAP;
+
+            const group = {
+                id: column.id,
+                title: column.title,
+                x: groupX,
+                y: groupY,
+                width: groupWidth,
+                height: groupHeight,
+                boardId: project.id,
+            };
+
+            console.log('📦 Generated group:', column.title, { x: groupX, y: groupY, width: groupWidth, height: groupHeight, cardsCount: columnTasks.length });
+
+            return group;
+        });
+    };
+
+    // =========================================
     // 데이터 로딩
     // =========================================
 
@@ -77,6 +145,11 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             setTasks(tasksData);
             setConnections(connectionsData);
             setColumns(columnsData);
+
+            // ✅ 컬럼 + 카드 위치 기반으로 Groups 생성
+            const generatedGroups = generateGroupsFromColumns(columnsData, tasksData);
+            setGroups(generatedGroups);
+            console.log('✅ Generated groups:', generatedGroups);
         } catch (err) {
             console.error('❌ Failed to load project data:', err);
             setError('프로젝트 데이터를 불러오는데 실패했습니다.');
@@ -160,21 +233,12 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         });
     }, [activeBoardId, project.id]);
 
-    // ✅ 태스크 생성 - 기본 컬럼에 배치
+    // ✅ 태스크 생성 - 컬럼 없이도 생성 가능
     const handleTaskCreate = useCallback(async (taskData: Partial<Task>): Promise<Task> => {
-        // 기본 컬럼 ID 가져오기
-        let columnId = taskData.column_id;
+        // 컬럼 ID 가져오기 (없으면 null)
+        let columnId = taskData.column_id || getDefaultColumnId() || undefined;
 
-        if (!columnId) {
-            const defaultColumnId = getDefaultColumnId();
-
-            if (!defaultColumnId) {
-                throw new Error('프로젝트에 컬럼이 없습니다. 먼저 컬럼을 생성해주세요.');
-            }
-            columnId = defaultColumnId;
-        }
-
-        console.log('📝 Creating task in column:', columnId);
+        console.log('📝 Creating task in column:', columnId || '(no column)');
 
         const newTaskData: Omit<Task, 'id'> = {
             title: taskData.title || '새로운 카드',
@@ -184,7 +248,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             boardId: project.id,
             description: taskData.description,
             content: taskData.content,
-            column_id: columnId, // ✅ 기본 컬럼 ID 사용
+            column_id: columnId, // 컬럼 없으면 undefined
             taskType: taskData.taskType,
             card_type: taskData.card_type,
             time: taskData.time,
@@ -198,13 +262,13 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         };
 
         try {
-            const newTask = await createTask(columnId, newTaskData);
+            const newTask = await createTask(project.id, newTaskData);
             // ✅ 기존 태스크 목록에 새 태스크 추가 (중복 방지)
             setTasks(prev => {
                 const filtered = prev.filter(t => t.id !== newTask.id);
                 return [...filtered, newTask];
             });
-            console.log('✅ Task created:', newTask.id, 'in column:', columnId);
+            console.log('✅ Task created:', newTask.id, 'in column:', columnId || '(no column)');
             return newTask;
         } catch (err) {
             console.error('❌ Failed to create task:', err);
@@ -221,19 +285,17 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             return;
         }
 
-        // ✅ X 좌표가 변경되었으면 새 컬럼 찾기
+        // X 좌표가 변경되었으면 새 컬럼 찾기
         let finalUpdates = { ...updates };
 
         if (updates.x !== undefined && updates.x !== task.x) {
             const newColumn = getColumnByXPosition(updates.x);
             if (newColumn && newColumn.id !== task.column_id) {
                 finalUpdates.column_id = newColumn.id;
-                finalUpdates.status = newColumn.status;
-                console.log('📦 Moving task to column:', newColumn.title, '(id:', newColumn.id, ')');
             }
         }
 
-        // ✅ 낙관적 UI 업데이트 - 중복 방지
+        // 낙관적 UI 업데이트 - 중복 방지
         setTasks(prev => {
             const updated = prev.map(t => t.id === taskId ? { ...t, ...finalUpdates } : t);
             // 중복 제거
@@ -367,9 +429,65 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // 그룹 핸들러 (그룹 내 카드도 함께 이동)
     // =========================================
 
-    const handleGroupsUpdate = useCallback((newGroups: Group[]) => {
+    // ✅ 그룹 업데이트 - 새 그룹 생성 시 백엔드에 컬럼 생성 + 카드들 연결
+    const handleGroupsUpdate = useCallback(async (newGroups: Group[]) => {
+        // 새로 추가된 그룹 찾기 (기존 groups에 없는 것)
+        const existingIds = new Set(groups.map(g => g.id));
+        const addedGroups = newGroups.filter(g => !existingIds.has(g.id));
+
+        // 새 그룹이 있으면 백엔드에 컬럼 생성
+        for (const newGroup of addedGroups) {
+            try {
+                const newColumn = await createColumn(project.id, {
+                    title: newGroup.title,
+                    order: columns.length, // 마지막 순서로 추가
+                });
+
+                console.log('✅ Column created:', newColumn.id, newColumn.title);
+
+                // 컬럼 목록에 추가
+                setColumns(prev => [...prev, newColumn]);
+
+                // 그룹 영역 안에 있는 카드들 찾기
+                const cardsInGroup = tasks.filter(t => {
+                    const tx = t.x || 0;
+                    const ty = t.y || 0;
+                    return tx >= newGroup.x &&
+                        tx <= newGroup.x + newGroup.width &&
+                        ty >= newGroup.y &&
+                        ty <= newGroup.y + newGroup.height;
+                });
+
+                console.log('📦 Cards in new group:', cardsInGroup.map(c => c.id));
+
+                // 그룹 안 카드들의 column_id를 새 컬럼 ID로 업데이트
+                for (const card of cardsInGroup) {
+                    try {
+                        await updateTask(card.id, { column_id: newColumn.id });
+                        console.log('✅ Card updated:', card.id, '→ column:', newColumn.id);
+                    } catch (err) {
+                        console.error('❌ Failed to update card:', card.id, err);
+                    }
+                }
+
+                // 로컬 상태도 업데이트
+                setTasks(prev => prev.map(t =>
+                    cardsInGroup.some(c => c.id === t.id)
+                        ? { ...t, column_id: newColumn.id }
+                        : t
+                ));
+
+                // 그룹 ID를 실제 컬럼 ID로 교체
+                newGroups = newGroups.map(g =>
+                    g.id === newGroup.id ? { ...g, id: newColumn.id } : g
+                );
+            } catch (err) {
+                console.error('❌ Failed to create column:', err);
+            }
+        }
+
         setGroups(newGroups);
-    }, []);
+    }, [groups, columns, tasks, project.id]);
 
     // ✅ 그룹 이동 시 내부 카드들의 컬럼도 변경
     const handleGroupMove = useCallback(async (groupId: number, newX: number, newY: number) => {
@@ -485,8 +603,10 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     );
 
     const filteredGroups = groups.filter(g =>
-        g.boardId === activeBoardId
+        g.boardId === activeBoardId || g.boardId === project.id || activeBoardId === 1
     );
+
+    console.log('🎯 Rendering - groups:', groups.length, 'filteredGroups:', filteredGroups.length, 'activeBoardId:', activeBoardId, 'project.id:', project.id);
 
     return (
         <div className="flex h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100 font-sans overflow-hidden">

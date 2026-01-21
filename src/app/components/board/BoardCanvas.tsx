@@ -232,14 +232,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     const saveTaskPosition = async (taskId: number, x: number, y: number) => {
         if (!onTaskUpdate) return;
-        const targetColumn = getColumnByX(x);
-        const task = tasks.find(t => t.id === taskId);
         const updates: Partial<Task> = { x, y };
-        if (targetColumn && task && targetColumn.id !== task.column_id) {
-            updates.column_id = targetColumn.id;
-            updates.status = targetColumn.status;
-            console.log(`📦 Task ${taskId} moved to column: ${targetColumn.title}`);
-        }
         setIsSavingPosition(true);
         try {
             await onTaskUpdate(taskId, updates);
