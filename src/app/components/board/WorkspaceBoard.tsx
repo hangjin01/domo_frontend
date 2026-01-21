@@ -1,7 +1,8 @@
+// src/app/components/board/WorkspaceBoard.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Project, Task, Connection, Board, Group, ViewMode } from '@/src/types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Project, Task, Connection, Board, Group, ViewMode, Column } from '@/src/types';
 import { BoardCanvas } from './BoardCanvas';
 import { CalendarView, TimelineView, SettingsView } from './Views';
 import { TaskDetailModal } from '../ui/TaskDetailModal';
@@ -12,15 +13,17 @@ import { MOCK_MEMBERS } from '@/src/lib/api/mock-data';
 import {
     getTasks,
     getConnections,
+    getColumns,
     createTask,
     updateTask,
+    deleteTask,
     createConnection,
-    deleteConnection
+    deleteConnection,
 } from '@/src/lib/api';
 
 import {
     Trello, Calendar as CalendarIcon, StretchHorizontal, Settings,
-    ChevronLeft, ChevronRight, ArrowLeft, Loader2
+    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle
 } from 'lucide-react';
 
 interface WorkspaceBoardProps {
@@ -29,11 +32,15 @@ interface WorkspaceBoardProps {
 }
 
 export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack }) => {
+    // 데이터 상태
     const [tasks, setTasks] = useState<Task[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
+    const [columns, setColumns] = useState<Column[]>([]); // ✅ 컬럼 상태 추가
     const [boards, setBoards] = useState<Board[]>([{ id: 1, title: '메인 보드' }]);
     const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
+
+    // UI 상태
     const [viewMode, setViewMode] = useState<ViewMode>('board');
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [snapToGrid, setSnapToGrid] = useState(false);
@@ -46,49 +53,75 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // 로딩 & 에러 상태
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
-    // 프로젝트 데이터 로드
-    useEffect(() => {
-        const loadProjectData = async () => {
-            setIsLoading(true);
-            setError(null);
+    // =========================================
+    // 데이터 로딩
+    // =========================================
 
-            try {
-                const [tasksData, connectionsData] = await Promise.all([
-                    getTasks(project.id),
-                    getConnections(project.id),
-                ]);
+    const loadProjectData = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
 
-                setTasks(tasksData);
-                setConnections(connectionsData);
-            } catch (err) {
-                console.error('Failed to load project data:', err);
-                setError('프로젝트 데이터를 불러오는데 실패했습니다.');
-            } finally {
-                setIsLoading(false);
-            }
-        };
+        try {
+            // ✅ 컬럼도 함께 로딩
+            const [tasksData, connectionsData, columnsData] = await Promise.all([
+                getTasks(project.id),
+                getConnections(project.id),
+                getColumns(project.id),
+            ]);
 
-        loadProjectData();
+            console.log('✅ Loaded tasks:', tasksData.length);
+            console.log('✅ Loaded connections:', connectionsData.length);
+            console.log('✅ Loaded columns:', columnsData.length);
+
+            setTasks(tasksData);
+            setConnections(connectionsData);
+            setColumns(columnsData);
+        } catch (err) {
+            console.error('❌ Failed to load project data:', err);
+            setError('프로젝트 데이터를 불러오는데 실패했습니다.');
+        } finally {
+            setIsLoading(false);
+        }
     }, [project.id]);
 
-    const handleBoardTasksUpdate = (boardTasks: Task[]) => {
+    useEffect(() => {
+        loadProjectData();
+    }, [loadProjectData]);
+
+    // =========================================
+    // 태스크 핸들러
+    // =========================================
+
+    // 보드 내 태스크 업데이트 (로컬 상태만)
+    const handleBoardTasksUpdate = useCallback((boardTasks: Task[]) => {
         setTasks(prev => {
             const other = prev.filter(t => t.boardId !== activeBoardId);
             return [...other, ...boardTasks];
         });
-    };
+    }, [activeBoardId]);
 
-    // 태스크 생성 핸들러
-    const handleTaskCreate = async (taskData: Partial<Task>) => {
-        const columnId = taskData.column_id || 1;
+    // 태스크 생성
+    const handleTaskCreate = useCallback(async (taskData: Partial<Task>): Promise<Task> => {
+        // ✅ 실제 컬럼 ID 사용 (첫 번째 컬럼 또는 전달된 column_id)
+        let columnId = taskData.column_id;
+
+        if (!columnId) {
+            // 컬럼이 없으면 에러
+            if (columns.length === 0) {
+                throw new Error('프로젝트에 컬럼이 없습니다. 먼저 컬럼을 생성해주세요.');
+            }
+            // 첫 번째 컬럼 사용
+            columnId = columns[0].id;
+        }
 
         const newTaskData: Omit<Task, 'id'> = {
             title: taskData.title || '새로운 카드',
             status: taskData.status || 'todo',
             x: taskData.x ?? 100,
             y: taskData.y ?? 100,
-            boardId: activeBoardId,
+            boardId: project.id, // 프로젝트 ID를 boardId로 사용
             description: taskData.description,
             content: taskData.content,
             column_id: columnId,
@@ -109,83 +142,169 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             setTasks(prev => [...prev, newTask]);
             return newTask;
         } catch (err) {
-            console.error('Failed to create task:', err);
+            console.error('❌ Failed to create task:', err);
             throw err;
         }
-    };
+    }, [project.id, columns]); // ✅ columns 의존성 추가
 
-    // 태스크 업데이트 핸들러
-    const handleTaskUpdate = async (taskId: number, updates: Partial<Task>) => {
+    // 태스크 업데이트
+    const handleTaskUpdate = useCallback(async (taskId: number, updates: Partial<Task>): Promise<void> => {
         const previousTasks = [...tasks];
+
+        // 낙관적 UI 업데이트
         setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
 
         try {
+            setIsSaving(true);
             await updateTask(taskId, updates);
         } catch (err) {
-            console.error('Failed to update task:', err);
+            console.error('❌ Failed to update task:', err);
+            // 롤백
+            setTasks(previousTasks);
+            throw err;
+        } finally {
+            setIsSaving(false);
+        }
+    }, [tasks]);
+
+    // 태스크 삭제
+    const handleTaskDelete = useCallback(async (taskId: number): Promise<void> => {
+        const previousTasks = [...tasks];
+
+        // 낙관적 UI 업데이트
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+
+        try {
+            await deleteTask(taskId);
+        } catch (err) {
+            console.error('❌ Failed to delete task:', err);
+            // 롤백
             setTasks(previousTasks);
             throw err;
         }
-    };
+    }, [tasks]);
 
-    // 연결선 생성 핸들러
-    const handleConnectionCreate = async (from: number, to: number) => {
+    // =========================================
+    // 연결선 핸들러
+    // =========================================
+
+    const handleConnectionCreate = useCallback(async (from: number, to: number): Promise<Connection> => {
         const newConnection: Omit<Connection, 'id'> = {
             from,
             to,
-            boardId: activeBoardId,
+            boardId: project.id,
             style: 'solid',
-            shape: 'bezier'
+            shape: 'bezier',
         };
 
-        const tempId = Date.now();
-        setConnections(prev => [...prev, { ...newConnection, id: tempId }]);
-
         try {
-            const savedConnection = await createConnection(project.id, newConnection);
-            setConnections(prev =>
-                prev.map(c => c.id === tempId ? savedConnection : c)
-            );
+            const created = await createConnection(project.id, newConnection);
+            setConnections(prev => [...prev, created]);
+            return created;
         } catch (err) {
-            console.error('Failed to create connection:', err);
-            setConnections(prev => prev.filter(c => c.id !== tempId));
+            console.error('❌ Failed to create connection:', err);
+            throw err;
         }
-    };
+    }, [project.id]);
 
-    // 연결선 삭제 핸들러
-    const handleConnectionDelete = async (connectionId: number) => {
+    const handleConnectionDelete = useCallback(async (connectionId: number): Promise<void> => {
         const previousConnections = [...connections];
+
         setConnections(prev => prev.filter(c => c.id !== connectionId));
 
         try {
             await deleteConnection(project.id, connectionId);
         } catch (err) {
-            console.error('Failed to delete connection:', err);
+            console.error('❌ Failed to delete connection:', err);
             setConnections(previousConnections);
+            throw err;
         }
-    };
+    }, [project.id, connections]);
 
-    // 로딩 화면
+    const handleConnectionUpdate = useCallback((connectionId: number, updates: Partial<Connection>) => {
+        setConnections(prev => prev.map(c =>
+            c.id === connectionId ? { ...c, ...updates } : c
+        ));
+    }, []);
+
+    // =========================================
+    // 보드 핸들러
+    // =========================================
+
+    const handleSwitchBoard = useCallback((boardId: number) => {
+        setActiveBoardId(boardId);
+    }, []);
+
+    const handleAddBoard = useCallback(() => {
+        const newBoard: Board = {
+            id: Date.now(),
+            title: `보드 ${boards.length + 1}`,
+        };
+        setBoards(prev => [...prev, newBoard]);
+        setActiveBoardId(newBoard.id);
+    }, [boards.length]);
+
+    const handleRenameBoard = useCallback((boardId: number, title: string) => {
+        setBoards(prev => prev.map(b =>
+            b.id === boardId ? { ...b, title } : b
+        ));
+    }, []);
+
+    // =========================================
+    // 그룹 핸들러
+    // =========================================
+
+    const handleGroupsUpdate = useCallback((newGroups: Group[]) => {
+        setGroups(newGroups);
+    }, []);
+
+    // =========================================
+    // 기타 핸들러
+    // =========================================
+
+    const handleTaskSelect = useCallback((task: Task) => {
+        setSelectedTask(task);
+    }, []);
+
+    const handleTaskModalUpdate = useCallback(async (updates: Partial<Task>) => {
+        if (!selectedTask) return;
+
+        await handleTaskUpdate(selectedTask.id, updates);
+        setSelectedTask(prev => prev ? { ...prev, ...updates } : null);
+    }, [selectedTask, handleTaskUpdate]);
+
+    const handleToggleGrid = useCallback(() => {
+        setSnapToGrid(prev => !prev);
+    }, []);
+
+    const handleToggleTheme = useCallback(() => {
+        document.documentElement.classList.toggle('dark');
+    }, []);
+
+    // =========================================
+    // 렌더링
+    // =========================================
+
     if (isLoading) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-black">
                 <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-                    <p className="text-gray-500 dark:text-gray-400">프로젝트 로딩 중...</p>
+                    <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
+                    <p className="text-gray-500 dark:text-gray-400 font-medium">프로젝트 로딩 중...</p>
                 </div>
             </div>
         );
     }
 
-    // 에러 화면
     if (error) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-black">
-                <div className="flex flex-col items-center gap-4 text-center">
-                    <p className="text-red-500">{error}</p>
+                <div className="flex flex-col items-center gap-4 max-w-md text-center">
+                    <AlertCircle className="w-12 h-12 text-red-500" />
+                    <p className="text-red-500 font-medium">{error}</p>
                     <button
-                        onClick={() => window.location.reload()}
-                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                        onClick={loadProjectData}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                     >
                         다시 시도
                     </button>
@@ -193,6 +312,21 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             </div>
         );
     }
+
+    // 현재 보드의 태스크만 필터링
+    // Mock 모드: boardId로 필터링
+    // 실제 API 모드: 모든 태스크가 같은 프로젝트이므로 필터링 불필요하나 일관성을 위해 유지
+    const filteredTasks = tasks.filter(t =>
+        t.boardId === activeBoardId || t.boardId === project.id || activeBoardId === 1
+    );
+
+    const filteredConnections = connections.filter(c =>
+        c.boardId === activeBoardId || c.boardId === project.id || activeBoardId === 1
+    );
+
+    const filteredGroups = groups.filter(g =>
+        g.boardId === activeBoardId
+    );
 
     return (
         <div className="flex h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100 font-sans overflow-hidden">
@@ -236,27 +370,42 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             <div className="p-4 bg-white/50 dark:bg-white/5 rounded-2xl border border-white/20 shadow-sm backdrop-blur-sm">
                                 <div className="font-bold text-lg truncate mb-1" title={project.name}>{project.name}</div>
                                 <div className="text-xs text-gray-500 font-medium">{project.workspace}</div>
+                                <div className="text-xs text-gray-400 mt-2">
+                                    {filteredTasks.length}개의 카드 • {filteredConnections.length}개의 연결
+                                </div>
                             </div>
                         </div>
                     )}
 
                     <div className="flex-1 overflow-y-auto px-4 space-y-1">
-                        <button onClick={() => setViewMode('board')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'board' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}>
+                        <button
+                            onClick={() => setViewMode('board')}
+                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'board' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                        >
                             <Trello size={20} strokeWidth={viewMode === 'board' ? 2.5 : 2} />
                             {sidebarOpen && <span className="font-medium">Board</span>}
                         </button>
-                        <button onClick={() => setViewMode('calendar')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'calendar' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}>
+                        <button
+                            onClick={() => setViewMode('calendar')}
+                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'calendar' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                        >
                             <CalendarIcon size={20} strokeWidth={viewMode === 'calendar' ? 2.5 : 2} />
                             {sidebarOpen && <span className="font-medium">Calendar</span>}
                         </button>
-                        <button onClick={() => setViewMode('timeline')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'timeline' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}>
+                        <button
+                            onClick={() => setViewMode('timeline')}
+                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'timeline' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                        >
                             <StretchHorizontal size={20} strokeWidth={viewMode === 'timeline' ? 2.5 : 2} />
                             {sidebarOpen && <span className="font-medium">Timeline</span>}
                         </button>
                     </div>
 
                     <div className="p-4 mt-auto">
-                        <button onClick={() => setViewMode('settings')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${viewMode === 'settings' ? 'bg-gray-200 dark:bg-white/10 font-bold text-gray-900 dark:text-white' : ''}`}>
+                        <button
+                            onClick={() => setViewMode('settings')}
+                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${viewMode === 'settings' ? 'bg-gray-200 dark:bg-white/10 font-bold text-gray-900 dark:text-white' : ''}`}
+                        >
                             <Settings size={20} />
                             {sidebarOpen && <span>Settings</span>}
                         </button>
@@ -267,40 +416,41 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-full relative overflow-hidden z-10 p-4">
                 <div className="bg-white/40 dark:bg-black/40 backdrop-blur-3xl rounded-[2rem] border border-white/20 dark:border-white/5 shadow-inner h-full overflow-hidden relative">
+
+                    {/* 저장 중 인디케이터 */}
+                    {isSaving && (
+                        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm shadow-lg">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>저장 중...</span>
+                        </div>
+                    )}
+
                     {viewMode === 'board' && (
                         <BoardCanvas
-                            tasks={tasks.filter(t => t.boardId === activeBoardId)}
-                            connections={connections.filter(c => c.boardId === activeBoardId)}
+                            tasks={filteredTasks}
+                            connections={filteredConnections}
                             onTasksUpdate={handleBoardTasksUpdate}
-                            onTaskSelect={setSelectedTask}
+                            onTaskSelect={handleTaskSelect}
                             onTaskCreate={handleTaskCreate}
                             onTaskUpdate={handleTaskUpdate}
+                            onTaskDelete={handleTaskDelete}
                             onConnectionCreate={handleConnectionCreate}
                             onConnectionDelete={handleConnectionDelete}
-                            onConnectionUpdate={(id, updates) => setConnections(connections.map(c => c.id === id ? { ...c, ...updates } : c))}
+                            onConnectionUpdate={handleConnectionUpdate}
                             boards={boards}
                             activeBoardId={activeBoardId}
-                            onSwitchBoard={setActiveBoardId}
-                            onAddBoard={(name) => {
-                                const newId = Date.now();
-                                setBoards([...boards, { id: newId, title: name }]);
-                                setActiveBoardId(newId);
-                            }}
-                            onRenameBoard={(id, name) => setBoards(boards.map(b => b.id === id ? { ...b, title: name } : b))}
+                            onSwitchBoard={handleSwitchBoard}
+                            onAddBoard={handleAddBoard}
+                            onRenameBoard={handleRenameBoard}
                             snapToGrid={snapToGrid}
-                            groups={groups.filter(g => g.boardId === activeBoardId)}
-                            onGroupsUpdate={(updatedGroups) => {
-                                setGroups(prev => {
-                                    const otherGroups = prev.filter(g => g.boardId !== activeBoardId);
-                                    return [...otherGroups, ...updatedGroups];
-                                });
-                            }}
-                            onToggleGrid={() => setSnapToGrid(!snapToGrid)}
-                            onToggleTheme={() => document.documentElement.classList.toggle('dark')}
+                            groups={filteredGroups}
+                            onGroupsUpdate={handleGroupsUpdate}
+                            onToggleGrid={handleToggleGrid}
+                            onToggleTheme={handleToggleTheme}
                         />
                     )}
-                    {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={setSelectedTask} />}
-                    {viewMode === 'timeline' && <TimelineView tasks={tasks} onTaskSelect={setSelectedTask} />}
+                    {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={handleTaskSelect} />}
+                    {viewMode === 'timeline' && <TimelineView tasks={tasks} onTaskSelect={handleTaskSelect} />}
                     {viewMode === 'settings' && <SettingsView />}
                 </div>
             </div>
@@ -317,14 +467,12 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                 currentUserId={1}
             />
 
+            {/* Task Detail Modal */}
             {selectedTask && (
                 <TaskDetailModal
                     task={selectedTask}
                     onClose={() => setSelectedTask(null)}
-                    onUpdate={(updated) => {
-                        setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-                        setSelectedTask(updated);
-                    }}
+                    onUpdate={handleTaskModalUpdate}
                     currentUser="User"
                     currentUserId={1}
                 />

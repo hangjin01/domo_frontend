@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Task, Connection, Board, Group, TaskFile } from '../../../types';
 import { TaskCard } from '../ui/TaskCard';
+import { deleteTask } from '../../../lib/api';
 import {
     Plus, LayoutDashboard, ChevronDown, Check, Pencil, X, MousePointer2, Layers, Spline, Activity, Trash2, FilePlus, Clipboard,
     Grid, Sun, Moon, Loader2
@@ -15,6 +16,7 @@ interface BoardCanvasProps {
     onTaskSelect: (task: Task) => void;
     onTaskCreate?: (taskData: Partial<Task>) => Promise<Task>;
     onTaskUpdate?: (taskId: number, updates: Partial<Task>) => Promise<void>;
+    onTaskDelete?: (taskId: number) => Promise<void>;  // 삭제 핸들러 추가
     onConnectionCreate: (from: number, to: number) => void;
     onConnectionDelete: (id: number) => void;
     onConnectionUpdate: (id: number, updates: Partial<Connection>) => void;
@@ -31,7 +33,7 @@ interface BoardCanvasProps {
 }
 
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onToggleGrid, onToggleTheme
+                                                            tasks, connections, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onToggleGrid, onToggleTheme
                                                         }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const boardSelectorRef = useRef<HTMLDivElement>(null);
@@ -60,6 +62,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     // API 호출 상태
     const [isCreatingTask, setIsCreatingTask] = useState(false);
     const [isSavingPosition, setIsSavingPosition] = useState(false);
+    const [isDeletingTask, setIsDeletingTask] = useState(false);  // 삭제 상태 추가
 
     const resetBoardMenuState = useCallback(() => {
         setIsCreatingBoard(false);
@@ -161,6 +164,12 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 evt.preventDefault();
                 handleCreateNewTask(mousePosRef.current.x - 140, mousePosRef.current.y - 40);
             }
+
+            // Delete 키로 선택된 카드 삭제
+            if ((key === 'delete' || key === 'backspace') && selectedTaskIds.size > 0) {
+                evt.preventDefault();
+                handleDeleteSelectedTasks();
+            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
@@ -199,11 +208,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             boardId: activeBoardId
         };
 
-        // onTaskCreate가 있으면 API 호출
         if (onTaskCreate) {
             setIsCreatingTask(true);
 
-            // 낙관적 UI 업데이트
             const tempTask: Task = {
                 ...newTaskData,
                 id: Date.now(),
@@ -217,18 +224,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
             try {
                 const savedTask = await onTaskCreate(newTaskData);
-                // 저장된 태스크로 교체
                 onTasksUpdate(tasks.filter(t => t.id !== tempTask.id).concat(savedTask));
                 onTaskSelect(savedTask);
             } catch (err) {
                 console.error('Failed to create task:', err);
-                // 롤백
                 onTasksUpdate(tasks.filter(t => t.id !== tempTask.id));
             } finally {
                 setIsCreatingTask(false);
             }
         } else {
-            // 로컬만 업데이트 (Mock 모드)
             const newTask: Task = {
                 ...newTaskData,
                 id: Date.now(),
@@ -254,6 +258,51 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         } finally {
             setIsSavingPosition(false);
         }
+    };
+
+    // ✅ 카드 삭제 함수 (API 연결)
+    const handleDeleteTask = async (taskId: number) => {
+        if (isDeletingTask) return;
+
+        setIsDeletingTask(true);
+        const previousTasks = [...tasks];
+
+        // 낙관적 UI 업데이트
+        onTasksUpdate(tasks.filter(t => t.id !== taskId));
+
+        // 연결선도 함께 삭제
+        const relatedConnections = connections.filter(c => c.from === taskId || c.to === taskId);
+        relatedConnections.forEach(c => onConnectionDelete(c.id));
+
+        try {
+            if (onTaskDelete) {
+                await onTaskDelete(taskId);
+            } else {
+                // onTaskDelete가 없으면 직접 API 호출
+                await deleteTask(taskId);
+            }
+        } catch (err) {
+            console.error('Failed to delete task:', err);
+            // 롤백
+            onTasksUpdate(previousTasks);
+            alert('카드 삭제에 실패했습니다.');
+        } finally {
+            setIsDeletingTask(false);
+            setBackgroundMenu(null);
+        }
+    };
+
+    // 선택된 모든 태스크 삭제
+    const handleDeleteSelectedTasks = async () => {
+        if (selectedTaskIds.size === 0) return;
+
+        const idsToDelete = Array.from(selectedTaskIds);
+
+        for (const id of idsToDelete) {
+            await handleDeleteTask(id);
+        }
+
+        setSelectedTaskIds(new Set());
     };
 
     const handlePointerDown = (e: React.PointerEvent, task?: Task, group?: Group) => {
@@ -393,7 +442,6 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const handlePointerUp = () => {
         if (selectionBox) setSelectionBox(null);
 
-        // 드래그 종료 시 위치 저장
         if (dragState) {
             const task = tasks.find(t => t.id === dragState.id);
             if (task) {
@@ -632,14 +680,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 <div className="flex items-center gap-6 mr-6">
                     <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-4 font-medium">
                         {/* 저장 중 표시 */}
-                        {(isCreatingTask || isSavingPosition) && (
+                        {(isCreatingTask || isSavingPosition || isDeletingTask) && (
                             <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg text-blue-600 dark:text-blue-400">
                                 <Loader2 size={12} className="animate-spin" />
-                                <span>저장 중...</span>
+                                <span>{isDeletingTask ? '삭제 중...' : '저장 중...'}</span>
                             </div>
                         )}
                         <div className="flex items-center gap-1.5 bg-white/50 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm"><span className="bg-gray-200 dark:bg-white/20 px-1.5 rounded text-[10px] uppercase">Ctrl</span><span>Select</span></div>
                         <div className="flex items-center gap-1.5 bg-white/50 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm"><span className="bg-gray-200 dark:bg-white/20 px-1.5 rounded text-[10px] uppercase">G</span><span>Group</span></div>
+                        <div className="flex items-center gap-1.5 bg-white/50 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm"><span className="bg-gray-200 dark:bg-white/20 px-1.5 rounded text-[10px] uppercase">Del</span><span>Delete</span></div>
                         <div className="flex items-center gap-2 border-l border-gray-300 dark:border-white/10 pl-4"><MousePointer2 size={12} /><span>우클릭 / &apos;N&apos;</span></div>
                     </div>
 
@@ -728,13 +777,16 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         </button>
                         {backgroundMenu.targetTaskId && (
                             <button
-                                onClick={() => {
-                                    onTasksUpdate(tasks.filter(t => t.id !== backgroundMenu.targetTaskId));
-                                    setBackgroundMenu(null);
-                                }}
-                                className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium"
+                                onClick={() => handleDeleteTask(backgroundMenu.targetTaskId!)}
+                                disabled={isDeletingTask}
+                                className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium disabled:opacity-50"
                             >
-                                <Trash2 size={16} /><span>카드 제거</span>
+                                {isDeletingTask ? (
+                                    <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                    <Trash2 size={16} />
+                                )}
+                                <span>카드 삭제</span>
                             </button>
                         )}
                         <button disabled className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 cursor-not-allowed w-full text-left font-medium border-t border-gray-200 dark:border-white/10">

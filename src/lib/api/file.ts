@@ -1,6 +1,6 @@
 import type { FileMetadata, FileVersion, TaskFile } from '../../types';
 import { API_CONFIG, apiFetch, apiUpload, mockDelay } from './config';
-import { mapFileToTaskFile } from './mappers';
+import { mapBackendFileToTaskFile } from './mappers';
 
 // ============================================
 // 파일 관리 API

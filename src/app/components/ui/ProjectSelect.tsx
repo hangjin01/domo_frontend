@@ -7,9 +7,14 @@ import {
   getMyInfo,
   getMyActivities,
   updateProfileImage,
-  updateMyInfo
+  updateMyInfo,
+  getWorkspaces,
+  createWorkspace,
+  createProject,
+  deleteProject,
+  deleteWorkspace,
 } from '../../../lib/api';
-import type { Project, AuthUser, User } from '../../../types';
+import type { Project, AuthUser, User, Workspace } from '../../../types';
 import type { ActivityLog } from '../../../lib/api/activity';
 import {
   LogOut,
@@ -25,7 +30,10 @@ import {
   Edit2,
   Save,
   X,
-  Activity
+  Activity,
+  Building2,
+  Trash2,
+  ChevronDown,
 } from 'lucide-react';
 import { Mascot } from './Mascot';
 
@@ -196,7 +204,372 @@ function ActivityList({ activities }: { activities: ActivityLog[] }) {
 }
 
 // ==========================================
-// 3. 메인 컴포넌트: ProjectSelect
+// 3. 워크스페이스 생성 모달
+// ==========================================
+interface CreateWorkspaceModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (workspace: Workspace) => void;
+}
+
+function CreateWorkspaceModal({ isOpen, onClose, onSuccess }: CreateWorkspaceModalProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError('워크스페이스 이름을 입력해주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const newWorkspace = await createWorkspace(name.trim(), description.trim() || undefined);
+      onSuccess(newWorkspace);
+      setName('');
+      setDescription('');
+      onClose();
+    } catch (err) {
+      console.error('Failed to create workspace:', err);
+      setError(err instanceof Error ? err.message : '워크스페이스 생성에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+        <div
+            className="w-full max-w-md bg-white dark:bg-[#1E212B] rounded-3xl shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-blue-500/10 rounded-2xl">
+              <Building2 className="text-blue-500" size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">새 워크스페이스</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">팀을 위한 새 워크스페이스를 만듭니다</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                워크스페이스 이름 *
+              </label>
+              <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="예: 캡스톤디자인 팀"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                설명 (선택)
+              </label>
+              <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="워크스페이스에 대한 간단한 설명"
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none"
+              />
+            </div>
+
+            {error && (
+                <div className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 p-3 rounded-xl">
+                  {error}
+                </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-3 px-4 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex-1 py-3 px-4 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                    <>
+                      <Loader2 className="animate-spin" size={18} />
+                      <span>생성 중...</span>
+                    </>
+                ) : (
+                    <span>워크스페이스 생성</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+  );
+}
+
+// ==========================================
+// 4. 프로젝트 생성 모달
+// ==========================================
+interface CreateProjectModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (project: Project) => void;
+  workspaces: Workspace[];
+}
+
+function CreateProjectModal({ isOpen, onClose, onSuccess, workspaces }: CreateProjectModalProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
+
+  // 워크스페이스가 있으면 첫 번째를 기본 선택
+  useEffect(() => {
+    if (workspaces.length > 0 && !selectedWorkspaceId) {
+      setSelectedWorkspaceId(workspaces[0].id);
+    }
+  }, [workspaces, selectedWorkspaceId]);
+
+  const selectedWorkspace = workspaces.find(w => w.id === selectedWorkspaceId);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!name.trim()) {
+      setError('프로젝트 이름을 입력해주세요.');
+      return;
+    }
+
+    if (!selectedWorkspaceId) {
+      setError('워크스페이스를 선택해주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const newProject = await createProject(selectedWorkspaceId, name.trim(), description.trim() || undefined);
+      onSuccess(newProject);
+      setName('');
+      setDescription('');
+      onClose();
+    } catch (err) {
+      console.error('Failed to create project:', err);
+      setError(err instanceof Error ? err.message : '프로젝트 생성에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+        <div
+            className="w-full max-w-md bg-white dark:bg-[#1E212B] rounded-3xl shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-green-500/10 rounded-2xl">
+              <Folder className="text-green-500" size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">새 프로젝트</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">워크스페이스에 새 프로젝트를 추가합니다</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* 워크스페이스 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                워크스페이스 *
+              </label>
+              {workspaces.length === 0 ? (
+                  <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-3 rounded-xl">
+                    먼저 워크스페이스를 생성해주세요.
+                  </div>
+              ) : (
+                  <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] text-left flex items-center justify-between hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+                    >
+                  <span className={selectedWorkspace ? 'text-gray-900 dark:text-white' : 'text-gray-500'}>
+                    {selectedWorkspace?.name || '워크스페이스 선택'}
+                  </span>
+                      <ChevronDown size={18} className={`text-gray-400 transition-transform ${showWorkspaceDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showWorkspaceDropdown && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#2c333a] border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-10">
+                          {workspaces.map((ws) => (
+                              <button
+                                  key={ws.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedWorkspaceId(ws.id);
+                                    setShowWorkspaceDropdown(false);
+                                  }}
+                                  className={`w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between ${
+                                      ws.id === selectedWorkspaceId ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                                  }`}
+                              >
+                                <div>
+                                  <div className="font-medium text-gray-900 dark:text-white">{ws.name}</div>
+                                  {ws.description && (
+                                      <div className="text-xs text-gray-500 dark:text-gray-400">{ws.description}</div>
+                                  )}
+                                </div>
+                                {ws.id === selectedWorkspaceId && (
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                                )}
+                              </button>
+                          ))}
+                        </div>
+                    )}
+                  </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                프로젝트 이름 *
+              </label>
+              <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="예: API 서버 개발"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                설명 (선택)
+              </label>
+              <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="프로젝트에 대한 간단한 설명"
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none"
+              />
+            </div>
+
+            {error && (
+                <div className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 p-3 rounded-xl">
+                  {error}
+                </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-3 px-4 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                  type="submit"
+                  disabled={isLoading || workspaces.length === 0}
+                  className="flex-1 py-3 px-4 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                    <>
+                      <Loader2 className="animate-spin" size={18} />
+                      <span>생성 중...</span>
+                    </>
+                ) : (
+                    <span>프로젝트 생성</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+  );
+}
+
+// ==========================================
+// 5. 프로젝트 컨텍스트 메뉴
+// ==========================================
+interface ProjectContextMenuProps {
+  project: Project;
+  position: { x: number; y: number };
+  onClose: () => void;
+  onDelete: (projectId: number) => void;
+}
+
+function ProjectContextMenu({ project, position, onClose, onDelete }: ProjectContextMenuProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!confirm(`정말로 "${project.name}" 프로젝트를 삭제하시겠습니까?\n이 작업은 취소할 수 없습니다.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteProject(project.id);
+      onDelete(project.id);
+      onClose();
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+      alert('프로젝트 삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+      <>
+        <div className="fixed inset-0 z-40" onClick={onClose} />
+        <div
+            className="fixed z-50 bg-white dark:bg-[#2c333a] rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-2 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
+            style={{ top: position.y, left: position.x }}
+        >
+          <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 disabled:opacity-50"
+          >
+            {isDeleting ? (
+                <Loader2 className="animate-spin" size={16} />
+            ) : (
+                <Trash2 size={16} />
+            )}
+            <span>프로젝트 삭제</span>
+          </button>
+        </div>
+      </>
+  );
+}
+
+// ==========================================
+// 6. 메인 컴포넌트: ProjectSelect
 // ==========================================
 
 interface ProjectSelectProps {
@@ -209,6 +582,7 @@ type ViewState = 'projects' | 'mypage';
 
 export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthUser, onSelectProject, onLogout }) => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -218,19 +592,33 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [mypageLoading, setMypageLoading] = useState(false);
 
-  // 초기 프로젝트 로딩
+  // 모달 상태
+  const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = useState(false);
+  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
+
+  // 컨텍스트 메뉴 상태
+  const [contextMenu, setContextMenu] = useState<{
+    project: Project;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  // 초기 데이터 로딩
   useEffect(() => {
-    const fetchProjects = async () => {
+    const fetchInitialData = async () => {
       try {
-        const data = await getMyProjects();
-        setProjects(data);
+        const [projectsData, workspacesData] = await Promise.all([
+          getMyProjects(),
+          getWorkspaces(),
+        ]);
+        setProjects(projectsData);
+        setWorkspaces(workspacesData);
       } catch (error) {
-        console.error('Failed to fetch projects:', error);
+        console.error('Failed to fetch initial data:', error);
       } finally {
         setLoading(false);
       }
     };
-    fetchProjects();
+    fetchInitialData();
   }, []);
 
   // 마이페이지 탭 전환 시 데이터 로딩
@@ -256,8 +644,35 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
   }, [currentView, fullUser]);
 
   const handleLogout = async () => {
-    await logout();
-    onLogout();
+    try {
+      await logout();
+      onLogout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // 로그아웃 실패해도 클라이언트에서는 로그아웃 처리
+      onLogout();
+    }
+  };
+
+  const handleWorkspaceCreated = (newWorkspace: Workspace) => {
+    setWorkspaces([...workspaces, newWorkspace]);
+  };
+
+  const handleProjectCreated = (newProject: Project) => {
+    setProjects([...projects, newProject]);
+  };
+
+  const handleProjectDeleted = (projectId: number) => {
+    setProjects(projects.filter(p => p.id !== projectId));
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, project: Project) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      project,
+      position: { x: e.clientX, y: e.clientY }
+    });
   };
 
   const filteredProjects = projects.filter(p =>
@@ -312,6 +727,27 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
                 </button>
               </div>
             </div>
+
+            {/* 빠른 생성 버튼들 */}
+            <div>
+              <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4 px-4">빠른 생성</h3>
+              <div className="space-y-2">
+                <button
+                    onClick={() => setShowCreateWorkspaceModal(true)}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                >
+                  <Building2 size={18} />
+                  <span>새 워크스페이스</span>
+                </button>
+                <button
+                    onClick={() => setShowCreateProjectModal(true)}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                >
+                  <Folder size={18} />
+                  <span>새 프로젝트</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="p-4 mt-auto">
@@ -351,7 +787,10 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
                     <h1 className="text-4xl font-semibold mb-2 tracking-tight text-gray-900 dark:text-white">내 프로젝트</h1>
                     <p className="text-gray-500 dark:text-gray-400">최근 활동한 프로젝트 목록입니다.</p>
                   </div>
-                  <button className="btn-primary flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform">
+                  <button
+                      onClick={() => setShowCreateProjectModal(true)}
+                      className="btn-primary flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform"
+                  >
                     <Plus size={18} />
                     <span>새 프로젝트</span>
                   </button>
@@ -379,6 +818,7 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
                             <div
                                 key={project.id}
                                 onClick={() => onSelectProject(project)}
+                                onContextMenu={(e) => handleContextMenu(e, project)}
                                 className="glass-card rounded-[2rem] p-6 cursor-pointer group relative overflow-hidden min-h-[220px] flex flex-col hover:-translate-y-1 transition-transform duration-300"
                             >
                               <div className="absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-500 opacity-0 group-hover:opacity-20 blur-3xl transition-opacity duration-500 rounded-full"></div>
@@ -387,7 +827,10 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
                                 <div className={`p-3 rounded-2xl bg-gradient-to-br ${project.color === '#FEF3C7' ? 'from-orange-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30 text-amber-600 dark:text-amber-400' : project.color === '#DBEAFE' ? 'from-blue-100 to-cyan-200 dark:from-blue-900/30 dark:to-blue-800/30 text-blue-600 dark:text-blue-400' : 'from-pink-100 to-rose-200 dark:from-pink-900/30 dark:to-pink-800/30 text-pink-600 dark:text-pink-400'} shadow-inner`}>
                                   <Folder size={24} />
                                 </div>
-                                <button className="text-gray-400 hover:text-gray-600 dark:hover:text-white p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors">
+                                <button
+                                    onClick={(e) => handleContextMenu(e, project)}
+                                    className="text-gray-400 hover:text-gray-600 dark:hover:text-white p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors"
+                                >
                                   <MoreHorizontal size={20} />
                                 </button>
                               </div>
@@ -418,7 +861,10 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
                         ))}
 
                         {/* 새 프로젝트 생성 버튼 */}
-                        <button className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-[2rem] p-6 flex flex-col items-center justify-center gap-4 text-gray-400 hover:text-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all h-full min-h-[220px] group">
+                        <button
+                            onClick={() => setShowCreateProjectModal(true)}
+                            className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-[2rem] p-6 flex flex-col items-center justify-center gap-4 text-gray-400 hover:text-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all h-full min-h-[220px] group"
+                        >
                           <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-full group-hover:scale-110 transition-transform">
                             <Plus size={28} />
                           </div>
@@ -458,6 +904,30 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
           )}
 
         </main>
+
+        {/* 모달들 */}
+        <CreateWorkspaceModal
+            isOpen={showCreateWorkspaceModal}
+            onClose={() => setShowCreateWorkspaceModal(false)}
+            onSuccess={handleWorkspaceCreated}
+        />
+
+        <CreateProjectModal
+            isOpen={showCreateProjectModal}
+            onClose={() => setShowCreateProjectModal(false)}
+            onSuccess={handleProjectCreated}
+            workspaces={workspaces}
+        />
+
+        {/* 컨텍스트 메뉴 */}
+        {contextMenu && (
+            <ProjectContextMenu
+                project={contextMenu.project}
+                position={contextMenu.position}
+                onClose={() => setContextMenu(null)}
+                onDelete={handleProjectDeleted}
+            />
+        )}
       </div>
   );
 };

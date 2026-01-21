@@ -66,10 +66,12 @@ export interface Workspace {
 }
 
 // ============================================
-// 3. 보드 / 태스크 / 노드
+// 3. 보드 / 태스크 / 노드 (프론트엔드용)
 // ============================================
 
 export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings';
+
+export type TaskStatus = 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done';
 
 export interface Tag {
   id: number;
@@ -93,11 +95,11 @@ export interface TaskFile {
   type: string;
 }
 
-// Task는 프론트엔드 캔버스용 (백엔드 Card와 매핑)
+// 프론트엔드 캔버스용 Task (UI에서 사용)
 export interface Task {
   id: number;
   title: string;
-  status: 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done';
+  status: TaskStatus;
   content?: string;
   description?: string;
 
@@ -106,13 +108,13 @@ export interface Task {
   y: number;
 
   // 분류
-  boardId: number;
-  column_id?: number;
-  taskType?: number;
-  card_type?: string;
+  boardId: number;       // 프론트에서 프로젝트 ID를 boardId로 사용
+  column_id?: number;    // 백엔드 컬럼 ID
+  taskType?: number;     // 0: 일, 1: 메모, 2: 파일
+  card_type?: string;    // 백엔드 card_type (task, memo)
 
   // 시간
-  time?: string;
+  time?: string;         // 프론트 표시용 (start|end 형식)
   start_date?: string;
   due_date?: string;
 
@@ -128,22 +130,10 @@ export interface Task {
   updated_at?: string;
 }
 
-// Node는 API 응답용 (mock-data에서 사용)
-export interface Node {
-  id: number;
-  title: string;
-  status: 'todo' | 'in-progress' | 'done';
-  x: number;
-  y: number;
-  assignees: Assignee[];
-  boardId?: number;
-  description?: string;
-}
-
 export interface Column {
   id: number;
   title: string;
-  status: Task['status'];
+  status: TaskStatus;
   order: number;
   project_id: number;
 }
@@ -200,7 +190,7 @@ export interface FileMetadata {
 }
 
 // ============================================
-// 5. API 응답 타입
+// 5. API 응답 타입 (프론트엔드용)
 // ============================================
 
 export interface ApiResponse<T> {
@@ -226,33 +216,88 @@ export interface VerifyResponse {
 }
 
 // ============================================
-// 6. 백엔드 API 스키마와 매칭되는 타입
+// 6. 백엔드 API 스키마 (백엔드 응답과 1:1 매칭)
 // ============================================
 
-// 백엔드 CardResponse와 1:1 매칭
-export interface CardResponse {
+// 백엔드 UserResponse
+export interface BackendUserResponse {
+  id: number;
+  email: string;
+  name: string;
+  is_student_verified: boolean;
+  profile_image?: string | null;
+}
+
+// 백엔드 FileVersionResponse
+export interface BackendFileVersionResponse {
+  id: number;
+  version: number;
+  file_size: number;
+  created_at: string;
+  uploader_id: number;
+}
+
+// 백엔드 FileResponse
+export interface BackendFileResponse {
+  id: number;
+  project_id: number;
+  filename: string;
+  owner_id: number;
+  created_at: string;
+  latest_version?: BackendFileVersionResponse | null;
+}
+
+// 백엔드 CardCommentResponse
+export interface BackendCardCommentResponse {
+  id: number;
+  card_id: number;
+  user_id: number;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  user?: BackendUserResponse | null;
+}
+
+// 백엔드 CardResponse (핵심!)
+export interface BackendCardResponse {
   id: number;
   title: string;
   content: string | null;
   order: number;
   column_id: number;
-  card_type: string;
+  card_type: string;          // "task" | "memo"
   x: number;
   y: number;
   created_at: string;
   updated_at: string;
-  assignees: User[];
-  files: FileMetadata[];
+  assignees: BackendUserResponse[];
+  files: BackendFileResponse[];
   start_date: string | null;
   due_date: string | null;
 }
 
 // 백엔드 BoardColumnResponse
-export interface BoardColumnResponse {
+export interface BackendBoardColumnResponse {
   id: number;
   title: string;
   order: number;
   project_id: number;
+}
+
+// 백엔드 Board 응답 (컬럼 + 카드)
+export interface BackendBoardResponse {
+  column: BackendBoardColumnResponse;
+  cards: BackendCardResponse[];
+}
+
+// 백엔드 CardConnectionResponse
+export interface BackendCardConnectionResponse {
+  id: number;
+  from: number;       // serialization_alias로 변환됨
+  to: number;
+  boardId: number;
+  style: string;
+  shape: string;
 }
 
 // ============================================
