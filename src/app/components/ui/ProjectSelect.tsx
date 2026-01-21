@@ -34,8 +34,10 @@ import {
   Building2,
   Trash2,
   ChevronDown,
+  Settings,
 } from 'lucide-react';
 import { Mascot } from './Mascot';
+import { SettingsView } from '../board/Views';
 
 // ==========================================
 // 1. 하위 컴포넌트: ProfileCard
@@ -578,7 +580,7 @@ interface ProjectSelectProps {
   onLogout: () => void;
 }
 
-type ViewState = 'projects' | 'mypage';
+type ViewState = 'projects' | 'mypage' | 'settings';
 
 export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthUser, onSelectProject, onLogout }) => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -601,6 +603,27 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
     project: Project;
     position: { x: number; y: number };
   } | null>(null);
+
+  // 프로필 드롭다운 메뉴 상태 (행진 기능 추가)
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'preferences'>('profile');
+
+  // 프로필 메뉴 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    if (isProfileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isProfileMenuOpen]);
 
   // 초기 데이터 로딩
   useEffect(() => {
@@ -787,13 +810,81 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
                     <h1 className="text-4xl font-semibold mb-2 tracking-tight text-gray-900 dark:text-white">내 프로젝트</h1>
                     <p className="text-gray-500 dark:text-gray-400">최근 활동한 프로젝트 목록입니다.</p>
                   </div>
-                  <button
-                      onClick={() => setShowCreateProjectModal(true)}
-                      className="btn-primary flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform"
-                  >
-                    <Plus size={18} />
-                    <span>새 프로젝트</span>
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => setShowCreateProjectModal(true)}
+                        className="btn-primary flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform"
+                    >
+                      <Plus size={18} />
+                      <span>새 프로젝트</span>
+                    </button>
+
+                    {/* 프로필 드롭다운 메뉴 (행진 기능 추가) */}
+                    <div className="hidden md:flex items-center gap-3 pl-1 pr-2 py-1 bg-white/40 dark:bg-white/5 rounded-full border border-white/20 backdrop-blur-sm relative" ref={profileMenuRef}>
+                      <div
+                        className="flex items-center gap-2 cursor-pointer hover:bg-white/30 dark:hover:bg-white/10 p-1 rounded-full transition-colors"
+                        onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm overflow-hidden">
+                          {fullUser?.profile_image ? (
+                            <img src={fullUser.profile_image} alt="Profile" className="w-full h-full object-cover" />
+                          ) : (
+                            initialAuthUser.name.slice(0, 2)
+                          )}
+                        </div>
+                        <div className="flex flex-col mr-2">
+                          <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{fullUser?.name || initialAuthUser.name}</span>
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400">{initialAuthUser.email}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                        className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 transition-colors"
+                      >
+                        <ChevronDown size={14} className={`transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {/* Profile Dropdown Menu */}
+                      {isProfileMenuOpen && (
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-[#16181D] rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                          <div className="p-2 space-y-0.5">
+                            <button
+                              onClick={() => {
+                                setSettingsTab('profile');
+                                setCurrentView('settings');
+                                setIsProfileMenuOpen(false);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors text-left"
+                            >
+                              <UserIcon size={16} />
+                              <span>프로필</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSettingsTab('preferences');
+                                setCurrentView('settings');
+                                setIsProfileMenuOpen(false);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors text-left"
+                            >
+                              <Settings size={16} />
+                              <span>환경설정</span>
+                            </button>
+                          </div>
+                          <div className="h-px bg-gray-100 dark:bg-gray-800 my-0.5"></div>
+                          <div className="p-2">
+                            <button
+                              onClick={handleLogout}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-left"
+                            >
+                              <LogOut size={16} />
+                              <span>로그아웃</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </header>
 
                 <div className="max-w-7xl mx-auto">
@@ -900,6 +991,25 @@ export const ProjectSelect: React.FC<ProjectSelectProps> = ({ user: initialAuthU
                 ) : (
                     <div className="text-center text-gray-500">사용자 정보를 불러올 수 없습니다.</div>
                 )}
+              </div>
+          )}
+
+          {/* === VIEW: SETTINGS (행진 기능 추가) === */}
+          {currentView === 'settings' && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto">
+                <button
+                  onClick={() => setCurrentView('projects')}
+                  className="mb-6 flex items-center gap-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
+                >
+                  <ChevronDown className="rotate-90" size={20} />
+                  <span className="font-medium">프로젝트 목록으로 돌아가기</span>
+                </button>
+                <SettingsView 
+                  key={settingsTab} 
+                  initialTab={settingsTab} 
+                  onLogout={onLogout}
+                  user={fullUser ? { name: fullUser.name, email: fullUser.email, profile_image: fullUser.profile_image } : { name: initialAuthUser.name, email: initialAuthUser.email }}
+                />
               </div>
           )}
 
