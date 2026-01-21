@@ -264,3 +264,22 @@ declare global {
     webkitAudioContext: typeof AudioContext;
   }
 }
+
+// ============================================
+// 8. 음성 채팅 / WebRTC
+// ============================================
+
+export interface SignalData {
+  type: 'join' | 'offer' | 'answer' | 'ice' | 'user_left';
+  senderId: number;
+  targetId?: number;
+  sdp?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
+}
+
+export interface VoiceChatState {
+  isConnected: boolean;
+  isMuted: boolean;
+  isDeafened: boolean;
+  activePeerIds: number[];
+}

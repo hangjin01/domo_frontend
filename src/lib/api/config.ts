@@ -109,3 +109,28 @@ export async function apiUpload<T>(
 export function mockDelay(ms: number = 300): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+/**
+ * API Base URL을 기반으로 WebSocket URL 생성
+ * 예: http://localhost:9000/api -> ws://localhost:9000/ws
+ */
+export function getWebSocketUrl(path: string): string {
+  let baseUrl = API_CONFIG.BASE_URL;
+
+  // 1. 프로토콜 변환 (http -> ws, https -> wss)
+  if (baseUrl.startsWith('https')) {
+    baseUrl = baseUrl.replace('https', 'wss');
+  } else {
+    baseUrl = baseUrl.replace('http', 'ws');
+  }
+
+  // 2. /api 접미사 제거 (백엔드 라우팅 구조에 따라 조정)
+  // 기존: http://locahost:9000/api
+  // 목표: ws://localhost:9000/ws/...
+  if (baseUrl.endsWith('/api')) {
+    baseUrl = baseUrl.slice(0, -4);
+  }
+
+  // 3. 경로 결합
+  return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+}

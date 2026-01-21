@@ -7,6 +7,7 @@ import type {
   EditingCard,
   User,
 } from '../../types';
+import {ActivityLog} from "@/src/lib/api/activity.ts";
 
 // ============================================
 // 인증 관련 목업 데이터
@@ -36,6 +37,8 @@ export const MOCK_CURRENT_USER: User = {
   id: 1,
   email: 'student@jj.ac.kr',
   name: '김도모',
+  is_student_verified: true,
+  profile_image: null,
 };
 
 export const MOCK_ONLINE_MEMBERS: User[] = [
@@ -240,4 +243,32 @@ export const MOCK_TODAY_TASKS: Task[] = [
 
 export const MOCK_EDITING_CARDS: EditingCard[] = [
   { id: 2, title: 'UI 디자인', user: '이협업' },
+];
+
+// ============================================
+// 활동 로그 목업 데이터 (신규 추가)
+// ============================================
+
+export const MOCK_ACTIVITIES: ActivityLog[] = [
+  {
+    id: 1,
+    user_id: 1,
+    content: '📋 새로운 프로젝트 "Domo 협업 플랫폼"을 생성했습니다.',
+    action_type: 'CREATE',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    user_id: 1,
+    content: '📝 "기획서 작성" 카드의 상태를 완료로 변경했습니다.',
+    action_type: 'UPDATE',
+    created_at: new Date(Date.now() - 3600000).toISOString(), // 1시간 전
+  },
+  {
+    id: 3,
+    user_id: 1,
+    content: '💾 "UI 가이드라인.pdf" 파일을 업로드했습니다.',
+    action_type: 'UPLOAD',
+    created_at: new Date(Date.now() - 86400000).toISOString(), // 1일 전
+  },
 ];
