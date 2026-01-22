@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Mascot } from '@/src/app/components/ui/Mascot.tsx';
+import { Mascot } from '@/src/app/components/ui/Mascot';
 import { CheckCircle2, ArrowRight, Sparkles } from 'lucide-react';
 
 interface VerifySuccessScreenProps {

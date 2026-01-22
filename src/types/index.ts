@@ -150,11 +150,31 @@ export interface Connection {
 export interface Group {
   id: number;
   title: string;
-  x: number;
-  y: number;
+
+  // 상대 좌표 (부모가 있으면 부모 기준, 없으면 캔버스 기준)
+  x: number;       // local_x
+  y: number;       // local_y
   width: number;
   height: number;
-  boardId?: number;
+
+  // 계층 구조
+  parentId?: number | null;  // 부모 그룹 ID (중첩 지원)
+  depth: number;             // 0: 최상위, 1: 1단계 중첩...
+
+  // 스타일
+  color?: string;
+  collapsed?: boolean;
+
+  // 연결
+  projectId: number;         // boardId → projectId로 명확화
+  order?: number;
+
+  // Transform (확장용)
+  transform?: {
+    scaleX: number;
+    scaleY: number;
+    rotation: number;
+  };
 }
 
 export interface Board {

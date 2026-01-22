@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mascot } from '@/src/app/components/ui/Mascot.tsx';
+import { Mascot } from '@/src/app/components/ui/Mascot';
 import { signup } from '@/src/lib/api';
 import { ArrowRight, Loader2, Mail, Lock, User, ArrowLeft } from 'lucide-react';
 

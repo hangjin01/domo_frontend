@@ -23,7 +23,7 @@ import {
 } from '@/src/lib/api';
 
 import {
-    Trello, Calendar as CalendarIcon, StretchHorizontal, Settings,
+    LayoutGrid, Calendar as CalendarIcon, StretchHorizontal, Settings,
     ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle
 } from 'lucide-react';
 
@@ -70,7 +70,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // =========================================
     // 컬럼 + 카드 위치 기반으로 Group 영역 계산
     // =========================================
-    const generateGroupsFromColumns = (
+    const generateGroupsFromColumns = useCallback((
         columnsData: Column[],
         tasksData: Task[]
     ): Group[] => {
@@ -107,21 +107,23 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
             // 다음 컬럼 시작 위치
             currentX = groupX + groupWidth + COLUMN_GAP;
 
-            const group = {
+            const group: Group = {
                 id: column.id,
                 title: column.title,
                 x: groupX,
                 y: groupY,
                 width: groupWidth,
                 height: groupHeight,
-                boardId: project.id,
+                projectId: project.id,
+                parentId: null,
+                depth: 0,
             };
 
             console.log('📦 Generated group:', column.title, { x: groupX, y: groupY, width: groupWidth, height: groupHeight, cardsCount: columnTasks.length });
 
             return group;
         });
-    };
+    }, [project.id]);
 
     // =========================================
     // 데이터 로딩
@@ -156,10 +158,10 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         } finally {
             setIsLoading(false);
         }
-    }, [project.id]);
+    }, [project.id, generateGroupsFromColumns]);
 
     useEffect(() => {
-        loadProjectData();
+        void loadProjectData();
     }, [loadProjectData]);
 
     // =========================================
@@ -236,7 +238,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     // ✅ 태스크 생성 - 컬럼 없이도 생성 가능
     const handleTaskCreate = useCallback(async (taskData: Partial<Task>): Promise<Task> => {
         // 컬럼 ID 가져오기 (없으면 null)
-        let columnId = taskData.column_id || getDefaultColumnId() || undefined;
+        const columnId = taskData.column_id || getDefaultColumnId() || undefined;
 
         console.log('📝 Creating task in column:', columnId || '(no column)');
 
@@ -286,12 +288,12 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
         }
 
         // X 좌표가 변경되었으면 새 컬럼 찾기
-        let finalUpdates = { ...updates };
+        const finalUpdates: Partial<Task> = { ...updates };
 
         if (updates.x !== undefined && updates.x !== task.x) {
             const newColumn = getColumnByXPosition(updates.x);
             if (newColumn && newColumn.id !== task.column_id) {
-                finalUpdates.column_id = newColumn.id;
+                (finalUpdates as Partial<Task>).column_id = newColumn.id;
             }
         }
 
@@ -603,7 +605,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
     );
 
     const filteredGroups = groups.filter(g =>
-        g.boardId === activeBoardId || g.boardId === project.id || activeBoardId === 1
+        g.projectId === activeBoardId || g.projectId === project.id || activeBoardId === 1
     );
 
     console.log('🎯 Rendering - groups:', groups.length, 'filteredGroups:', filteredGroups.length, 'activeBoardId:', activeBoardId, 'project.id:', project.id);
@@ -662,7 +664,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             onClick={() => setViewMode('board')}
                             className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'board' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
                         >
-                            <Trello size={20} strokeWidth={viewMode === 'board' ? 2.5 : 2} />
+                            <LayoutGrid size={20} strokeWidth={viewMode === 'board' ? 2.5 : 2} />
                             {sidebarOpen && <span className="font-medium">Board</span>}
                         </button>
                         <button

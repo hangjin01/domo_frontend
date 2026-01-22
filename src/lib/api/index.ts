@@ -43,6 +43,14 @@ export {
   // 컬럼
   getColumns,
   createColumn,
+  // 그룹 (Column 확장)
+  getGroups,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  updateGroupPosition,
+  updateGroupSize,
+  assignCardToGroup,
   // 보드
   getBoard,
   // 태스크

@@ -1,10 +1,31 @@
-import type { Task, Connection, Member, EditingCard, Comment, Column } from '../../types';
+import type { Task, Connection, Member, EditingCard, Comment, Column, Group } from '../../types';
 import { API_CONFIG, apiFetch, mockDelay } from './config';
 import {
   MOCK_TASKS,
   MOCK_CONNECTIONS,
   MOCK_MEMBERS,
   MOCK_EDITING_CARDS,
+  MOCK_COLUMNS,
+  MOCK_GROUPS,
+  // Mock 데이터 조작 헬퍼 함수들
+  addMockTask,
+  updateMockTask,
+  deleteMockTask,
+  getMockTask,
+  getMockTasksByProject,
+  addMockConnection,
+  deleteMockConnection,
+  getMockConnectionsByProject,
+  addMockColumn,
+  getMockColumnsByProject,
+  getMockColumn,
+  generateTaskId,
+  // Group 관련
+  addMockGroup,
+  updateMockGroup,
+  deleteMockGroup,
+  getMockGroup,
+  getMockGroupsByProject,
 } from './mock-data';
 
 // ============================================
@@ -52,6 +73,20 @@ interface BackendColumnResponse {
   title: string;
   order: number;
   project_id: number;
+  // 확장 필드 (그룹 기능용) - 백엔드 alias에 따라 camelCase
+  localX?: number;
+  localY?: number;
+  width?: number;
+  height?: number;
+  parentId?: number | null;
+  depth?: number;
+  color?: string;
+  collapsed?: boolean;
+  transform?: {
+    scaleX: number;
+    scaleY: number;
+    rotation: number;
+  };
 }
 
 interface BackendConnectionResponse {
@@ -201,7 +236,12 @@ function formatTimestamp(isoString: string): string {
 export async function getColumns(projectId: number): Promise<Column[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    // Mock 컬럼 데이터
+    // Mock 컬럼 데이터 - 헬퍼 함수 사용
+    const columns = getMockColumnsByProject(projectId);
+    if (columns.length > 0) {
+      return columns;
+    }
+    // 프로젝트에 컬럼이 없으면 기본 컬럼 반환
     return [
       { id: 1, title: '할 일', status: 'todo', order: 0, project_id: projectId },
       { id: 2, title: '진행 중', status: 'in-progress', order: 1, project_id: projectId },
@@ -229,13 +269,14 @@ export async function createColumn(
 ): Promise<Column> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return {
-      id: Date.now(),
+    // Mock 헬퍼 함수 사용
+    const newColumn = addMockColumn({
       title: data.title,
-      status: 'todo',
+      status: inferStatusFromColumn(data.title),
       order: data.order || 0,
       project_id: projectId,
-    };
+    });
+    return newColumn;
   }
 
   const response = await apiFetch<BackendColumnResponse>(`/projects/${projectId}/columns`, {
@@ -250,6 +291,168 @@ export async function createColumn(
     order: response.order,
     project_id: response.project_id,
   };
+}
+
+// ============================================
+// 그룹(Group) API - BoardColumn 확장 기능
+// ============================================
+
+/**
+ * 백엔드 Column 응답을 프론트엔드 Group으로 변환
+ */
+function mapColumnToGroup(col: BackendColumnResponse): Group {
+  return {
+    id: col.id,
+    title: col.title,
+    x: col.localX ?? 0,
+    y: col.localY ?? 0,
+    width: col.width ?? 300,
+    height: col.height ?? 500,
+    parentId: col.parentId ?? null,
+    depth: col.depth ?? 0,
+    color: col.color ?? '#ffffff',
+    collapsed: col.collapsed ?? false,
+    projectId: col.project_id,
+    order: col.order,
+    transform: col.transform ?? {
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    },
+  };
+}
+
+/**
+ * 프로젝트의 그룹 목록 조회
+ */
+export async function getGroups(projectId: number): Promise<Group[]> {
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(200);
+    return getMockGroupsByProject(projectId);
+  }
+
+  const response = await apiFetch<BackendColumnResponse[]>(`/projects/${projectId}/columns`);
+  return response.map(mapColumnToGroup);
+}
+
+/**
+ * 그룹 생성
+ */
+export async function createGroup(
+    projectId: number,
+    data: Partial<Group>
+): Promise<Group> {
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(200);
+    return addMockGroup({
+      ...data,
+      projectId: projectId,
+    });
+  }
+
+  const response = await apiFetch<BackendColumnResponse>(`/projects/${projectId}/columns`, {
+    method: 'POST',
+    body: JSON.stringify({
+      title: data.title || 'New Group',
+      localX: data.x ?? 0,
+      localY: data.y ?? 0,
+      width: data.width ?? 300,
+      height: data.height ?? 400,
+      parentId: data.parentId ?? null,
+      depth: data.depth ?? 0,
+      color: data.color ?? '#ffffff',
+      collapsed: false,
+      order: data.order ?? 0,
+    }),
+  });
+
+  return mapColumnToGroup(response);
+}
+
+/**
+ * 그룹 업데이트 (위치, 크기, 부모 등)
+ */
+export async function updateGroup(
+    groupId: number,
+    updates: Partial<Group>
+): Promise<Group> {
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(200);
+    const updated = updateMockGroup(groupId, updates);
+    if (!updated) {
+      throw new Error('그룹을 찾을 수 없습니다.');
+    }
+    return updated;
+  }
+
+  // 백엔드 스키마에 맞게 변환 (camelCase → snake_case alias)
+  const payload: Record<string, unknown> = {};
+  
+  if (updates.title !== undefined) payload.title = updates.title;
+  if (updates.x !== undefined) payload.localX = updates.x;
+  if (updates.y !== undefined) payload.localY = updates.y;
+  if (updates.width !== undefined) payload.width = updates.width;
+  if (updates.height !== undefined) payload.height = updates.height;
+  if (updates.parentId !== undefined) payload.parentId = updates.parentId;
+  if (updates.depth !== undefined) payload.depth = updates.depth;
+  if (updates.color !== undefined) payload.color = updates.color;
+  if (updates.collapsed !== undefined) payload.collapsed = updates.collapsed;
+  if (updates.order !== undefined) payload.order = updates.order;
+
+  const response = await apiFetch<BackendColumnResponse>(`/columns/${groupId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+  return mapColumnToGroup(response);
+}
+
+/**
+ * 그룹 삭제
+ */
+export async function deleteGroup(groupId: number): Promise<void> {
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(200);
+    deleteMockGroup(groupId);
+    return;
+  }
+
+  await apiFetch<void>(`/columns/${groupId}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * 그룹 위치만 업데이트 (드래그용 - 최적화)
+ */
+export async function updateGroupPosition(
+    groupId: number,
+    x: number,
+    y: number,
+    parentId?: number | null
+): Promise<Group> {
+  return updateGroup(groupId, { x, y, parentId });
+}
+
+/**
+ * 그룹 크기 업데이트 (리사이즈용)
+ */
+export async function updateGroupSize(
+    groupId: number,
+    width: number,
+    height: number
+): Promise<Group> {
+  return updateGroup(groupId, { width, height });
+}
+
+/**
+ * 카드를 그룹에 할당 (column_id 설정)
+ */
+export async function assignCardToGroup(
+    cardId: number,
+    groupId: number | null
+): Promise<Task> {
+  return updateTask(cardId, { column_id: groupId ?? undefined });
 }
 
 // ============================================
@@ -341,7 +544,8 @@ export async function getBoardCards(projectId: number): Promise<Task[]> {
 export async function getTasks(projectId: number): Promise<Task[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    return MOCK_TASKS.filter(t => t.boardId === projectId || projectId === 1);
+    // Mock 헬퍼 함수 사용
+    return getMockTasksByProject(projectId);
   }
 
   // 모든 카드 조회 (컬럼 유무 상관없이)
@@ -373,7 +577,8 @@ export async function getTasks(projectId: number): Promise<Task[]> {
 export async function getTask(taskId: number): Promise<Task> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const task = MOCK_TASKS.find(t => t.id === taskId);
+    // Mock 헬퍼 함수 사용
+    const task = getMockTask(taskId);
     if (!task) {
       throw new Error('태스크를 찾을 수 없습니다.');
     }
@@ -397,11 +602,16 @@ export async function createTask(
 ): Promise<Task> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return {
+    // Mock 헬퍼 함수 사용 - 새 태스크 추가
+    const newTask: Task = {
       ...task,
-      id: Date.now(),
+      id: generateTaskId(),
+      boardId: projectId,
       status: task.status || 'todo',
     } as Task;
+    
+    addMockTask(newTask);
+    return newTask;
   }
 
   // 백엔드: POST /api/projects/{project_id}/cards
@@ -433,11 +643,12 @@ export async function updateTask(
 ): Promise<Task> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const task = MOCK_TASKS.find(t => t.id === taskId);
-    if (!task) {
+    // Mock 헬퍼 함수 사용
+    const updatedTask = updateMockTask(taskId, updates);
+    if (!updatedTask) {
       throw new Error('태스크를 찾을 수 없습니다.');
     }
-    return { ...task, ...updates };
+    return updatedTask;
   }
 
   // 백엔드 형식으로 변환
@@ -472,6 +683,8 @@ export async function updateTask(
 export async function deleteTask(taskId: number): Promise<void> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
+    // Mock 헬퍼 함수 사용
+    deleteMockTask(taskId);
     return;
   }
 
@@ -576,7 +789,8 @@ export async function deleteCardComment(commentId: number): Promise<void> {
 export async function getConnections(projectId: number): Promise<Connection[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return MOCK_CONNECTIONS.filter(c => c.boardId === projectId || projectId === 1);
+    // Mock 헬퍼 함수 사용
+    return getMockConnectionsByProject(projectId);
   }
 
   const response = await apiFetch<BackendConnectionResponse[]>(`/projects/${projectId}/connections`);
@@ -600,10 +814,12 @@ export async function createConnection(
 ): Promise<Connection> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return {
+    // Mock 헬퍼 함수 사용
+    const newConnection = addMockConnection({
       ...connection,
-      id: Date.now(),
-    };
+      boardId: projectId,
+    });
+    return newConnection;
   }
 
   // 백엔드는 from_card_id, to_card_id로 받음 (alias: from, to)
@@ -636,6 +852,8 @@ export async function deleteConnection(
 ): Promise<void> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
+    // Mock 헬퍼 함수 사용
+    deleteMockConnection(connectionId);
     return;
   }
 
