@@ -26,6 +26,8 @@ interface TaskCardProps {
     onFileDragEnter?: (taskId: number) => void;
     onFileDragLeave?: (taskId: number) => void;
     onFileDrop?: (taskId: number, fileId: number) => void;
+    // 네이티브 파일 드롭 (브라우저에서 직접 드래그)
+    onNativeFileDrop?: (taskId: number, files: File[]) => void;
 }
 
 // 상태별 아이콘 컴포넌트
@@ -50,7 +52,7 @@ const STATUS_OPTIONS = [
 ];
 
 export const TaskCard: React.FC<TaskCardProps> = ({
-                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile, isFileDropTarget, onFileDragEnter, onFileDragLeave, onFileDrop
+                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile, isFileDropTarget, onFileDragEnter, onFileDragLeave, onFileDrop, onNativeFileDrop
                                                   }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showStatusMenu, setShowStatusMenu] = useState(false);
@@ -279,8 +281,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
         // 처음 진입할 때만 콜백 호출
         if (dragCounterRef.current === 1) {
-            const hasFileData = e.dataTransfer.types.includes('application/json');
-            if (hasFileData) {
+            const hasInternalFile = e.dataTransfer.types.includes('application/json');
+            const hasNativeFile = e.dataTransfer.types.includes('Files');
+            if (hasInternalFile || hasNativeFile) {
                 onFileDragEnter?.(task.id);
             }
         }
@@ -305,16 +308,26 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         // 드롭 시 카운터 리셋
         dragCounterRef.current = 0;
 
+        // 네이티브 파일 드롭 확인 (브라우저에서 직접 드래그한 파일)
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const files = Array.from(e.dataTransfer.files);
+            onNativeFileDrop?.(task.id, files);
+            onFileDragLeave?.(task.id);
+            return;
+        }
+
+        // 내부 파일 드롭 (앱 내 파일 목록에서 드래그)
         try {
             const data = JSON.parse(e.dataTransfer.getData('application/json'));
             if (data.type === 'file' && data.fileId) {
                 onFileDrop?.(task.id, data.fileId);
             }
         } catch (err) {
-            console.error('Failed to parse drop data:', err);
+            // JSON 파싱 실패는 무시 (네이티브 파일이 아닌 경우)
         }
         onFileDragLeave?.(task.id);
     };
+
 
     return (
         <div
