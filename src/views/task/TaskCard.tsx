@@ -21,6 +21,11 @@ interface TaskCardProps {
     onConnectStart?: (taskId: number, e: React.PointerEvent, handle: 'left' | 'right') => void;
     onConnectEnd?: (taskId: number, handle: 'left' | 'right') => void;
     onAttachFile?: (taskId: number) => void;
+    // 파일 드롭 관련
+    isFileDropTarget?: boolean;
+    onFileDragEnter?: (taskId: number) => void;
+    onFileDragLeave?: (taskId: number) => void;
+    onFileDrop?: (taskId: number, fileId: number) => void;
 }
 
 // 상태별 아이콘 컴포넌트
@@ -45,7 +50,7 @@ const STATUS_OPTIONS = [
 ];
 
 export const TaskCard: React.FC<TaskCardProps> = ({
-                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile
+                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile, isFileDropTarget, onFileDragEnter, onFileDragLeave, onFileDrop
                                                   }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showStatusMenu, setShowStatusMenu] = useState(false);
@@ -243,6 +248,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         cardClasses += " ring-4 ring-blue-500/50 dark:ring-blue-400/60 z-20 scale-[1.02] ";
     }
 
+    // 파일 드롭 타겟 하이라이트
+    if (isFileDropTarget) {
+        cardClasses += " ring-4 ring-green-500/70 dark:ring-green-400/70 z-20 scale-[1.02] bg-green-50 dark:bg-green-900/20 ";
+    }
+
     const formatTimeDisplay = (timeStr: string) => {
         if (!timeStr) return '';
         const parts = timeStr.split('|');
@@ -250,6 +260,60 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             return `${parts[0]} ~ ${parts[1]}`;
         }
         return parts[0];
+    };
+
+    // 파일 드래그 이벤트 핸들러 - 카운터 방식으로 자식 요소 버블링 문제 해결
+    const dragCounterRef = React.useRef(0);
+
+    const handleFileDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+    };
+
+    const handleFileDragEnter = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        dragCounterRef.current++;
+
+        // 처음 진입할 때만 콜백 호출
+        if (dragCounterRef.current === 1) {
+            const hasFileData = e.dataTransfer.types.includes('application/json');
+            if (hasFileData) {
+                onFileDragEnter?.(task.id);
+            }
+        }
+    };
+
+    const handleFileDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        dragCounterRef.current--;
+
+        // 완전히 벗어났을 때만 콜백 호출
+        if (dragCounterRef.current === 0) {
+            onFileDragLeave?.(task.id);
+        }
+    };
+
+    const handleFileDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // 드롭 시 카운터 리셋
+        dragCounterRef.current = 0;
+
+        try {
+            const data = JSON.parse(e.dataTransfer.getData('application/json'));
+            if (data.type === 'file' && data.fileId) {
+                onFileDrop?.(task.id, data.fileId);
+            }
+        } catch (err) {
+            console.error('Failed to parse drop data:', err);
+        }
+        onFileDragLeave?.(task.id);
     };
 
     return (
@@ -261,6 +325,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
             onKeyDown={handleKeyDown}
+            onDragOver={handleFileDragOver}
+            onDragEnter={handleFileDragEnter}
+            onDragLeave={handleFileDragLeave}
+            onDrop={handleFileDrop}
             tabIndex={0}
             className={cardClasses}
             style={{
@@ -392,6 +460,22 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
                     <div className={`flex gap-2 ${variant === 'sticky' ? 'opacity-70 ml-auto' : 'text-gray-400 dark:text-gray-500'}`}>
                         {(task.description && variant !== 'sticky') && <AlignLeft size={12} />}
+                        {/* 첨부 파일 표시 */}
+                        {task.files && task.files.length > 0 && (
+                            <div className="flex items-center gap-0.5 text-[10px]">
+                                {variant === 'sticky' ? (
+                                    <div className="flex items-center gap-1 bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-full">
+                                        <Paperclip size={10} />
+                                        <span className="font-bold">{task.files.length}</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-0.5">
+                                        <Paperclip size={10} />
+                                        <span>{task.files.length}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {task.comments && task.comments.length > 0 && (
                             <div className="flex items-center gap-0.5 text-[10px]">
                                 {variant === 'sticky' ? (

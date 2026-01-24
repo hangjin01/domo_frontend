@@ -2,14 +2,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Project, Task, Connection, Board, Group, ViewMode, Column } from '@/src/models/types';
+import { Project, Task, Connection, Board, Group, ViewMode, Column, FileMetadata } from '@/src/models/types';
 import { BoardCanvas } from '@/src/views/board';
 import { CalendarView } from '@/src/views/calendar';
 import { TimelineView } from '@/src/views/timeline';
 import { SettingsView } from '@/src/views/profile';
 import { TaskDetailModal } from '@/src/views/task';
 import { Mascot } from '@/src/views/common';
-import { Dock } from '@/src/views/dock';
+import { Dock, FileListPanel } from '@/src/views/dock';
 import { MOCK_MEMBERS } from '@/src/models/api/mock-data';
 
 import {
@@ -22,8 +22,10 @@ import {
     deleteTask,
     createConnection,
     deleteConnection,
+    updateConnection,
     updateGroup,
     deleteGroup,
+    attachFileToCard,
 } from '@/src/models/api';
 
 import {
@@ -54,6 +56,10 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     // Dock 관련 상태
     const [activeDockMenu, setActiveDockMenu] = useState('dashboard');
     const [showMembers, setShowMembers] = useState(false);
+
+    // 파일 패널 상태
+    const [showFilePanel, setShowFilePanel] = useState(false);
+    const [draggingFile, setDraggingFile] = useState<FileMetadata | null>(null);
 
     // 로딩 & 에러 상태
     const [isLoading, setIsLoading] = useState(true);
@@ -410,10 +416,58 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         }
     }, [project.id, connections]);
 
-    const handleConnectionUpdate = useCallback((connectionId: number, updates: Partial<Connection>) => {
+    const handleConnectionUpdate = useCallback(async (connectionId: number, updates: Partial<Connection>) => {
+        // 낙관적 업데이트 (Optimistic Update)
+        const previousConnections = [...connections];
         setConnections(prev => prev.map(c =>
             c.id === connectionId ? { ...c, ...updates } : c
         ));
+
+        try {
+            await updateConnection(connectionId, updates);
+            console.log('✅ Connection updated:', connectionId, updates);
+        } catch (err) {
+            console.error('❌ Failed to update connection:', err);
+            // 실패 시 롤백
+            setConnections(previousConnections);
+        }
+    }, [connections]);
+
+    // =========================================
+    // 파일 드롭 핸들러
+    // =========================================
+
+    const handleFileDropOnCard = useCallback(async (cardId: number, fileId: number) => {
+        try {
+            await attachFileToCard(cardId, fileId);
+            console.log('✅ File attached to card:', cardId, fileId);
+
+            // 카드의 files 배열 업데이트 (낙관적 업데이트는 복잡하므로 데이터 리로드)
+            // 실제로는 백엔드에서 반환된 카드 데이터로 업데이트하는 것이 좋음
+            const updatedTasks = await getTasks(project.id);
+            setTasks(updatedTasks);
+        } catch (err) {
+            console.error('❌ Failed to attach file to card:', err);
+        }
+    }, [project.id]);
+
+    // 프로젝트 파일 삭제 시 모든 카드에서 해당 파일 제거
+    const handleFileDeleted = useCallback((fileId: number) => {
+        setTasks(prev => prev.map(task => ({
+            ...task,
+            files: task.files?.filter(f => f.id !== fileId) || []
+        })));
+
+        // selectedTask도 업데이트 (모달이 열려있을 경우)
+        setSelectedTask(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                files: prev.files?.filter(f => f.id !== fileId) || []
+            };
+        });
+
+        console.log('✅ File removed from all cards:', fileId);
     }, []);
 
     // =========================================
@@ -789,6 +843,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                             onGroupDelete={handleGroupDelete}
                             onToggleGrid={handleToggleGrid}
                             onToggleTheme={handleToggleTheme}
+                            onFileDropOnCard={handleFileDropOnCard}
                         />
                     )}
                     {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={handleTaskSelect} />}
@@ -800,13 +855,32 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             {/* Dock 컴포넌트 */}
             <Dock
                 activeMenu={activeDockMenu}
-                onMenuChange={setActiveDockMenu}
+                onMenuChange={(menu) => {
+                    if (menu === 'files') {
+                        setShowFilePanel(prev => !prev);
+                    } else {
+                        setShowFilePanel(false);
+                    }
+                    setActiveDockMenu(menu);
+                }}
                 editingCards={[]}
                 members={MOCK_MEMBERS}
                 showMembers={showMembers}
                 setShowMembers={setShowMembers}
                 projectId={project.id}
                 currentUserId={1}
+            />
+
+            {/* 파일 목록 패널 */}
+            <FileListPanel
+                projectId={project.id}
+                isOpen={showFilePanel}
+                onClose={() => {
+                    setShowFilePanel(false);
+                    setActiveDockMenu('dashboard');
+                }}
+                onFileDragStart={(file) => setDraggingFile(file)}
+                onFileDeleted={handleFileDeleted}
             />
 
             {/* Task Detail Modal */}

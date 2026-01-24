@@ -24,7 +24,7 @@ interface BoardCanvasProps {
     // ✅ [수정] handle 정보 추가
     onConnectionCreate: (from: number, to: number, sourceHandle?: 'left' | 'right', targetHandle?: 'left' | 'right') => void;
     onConnectionDelete: (id: number) => void;
-    onConnectionUpdate: (id: number, updates: Partial<Connection>) => void;
+    onConnectionUpdate: (id: number, updates: Partial<Connection>) => void | Promise<void>;
     boards: Board[];
     activeBoardId: number;
     onSwitchBoard: (id: number) => void;
@@ -37,6 +37,8 @@ interface BoardCanvasProps {
     onGroupDelete?: (groupId: number) => Promise<void>;
     onToggleGrid: () => void;
     onToggleTheme: () => void;
+    // 파일 드롭 관련
+    onFileDropOnCard?: (cardId: number, fileId: number) => Promise<void>;
 }
 
 const COLUMN_WIDTH = 350;
@@ -54,7 +56,7 @@ const GRID_CONFIG: Partial<GridConfig> = {
 };
 
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme
+                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onFileDropOnCard
                                                         }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const boardSelectorRef = useRef<HTMLDivElement>(null);
@@ -65,6 +67,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const mousePosRef = useRef({ x: 0, y: 0 });
     const [lines, setLines] = useState<React.ReactElement[]>([]);
     const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
+
+    // 파일 드래그 드롭 상태
+    const [fileDropTargetCardId, setFileDropTargetCardId] = useState<number | null>(null);
 
     // 자유 배치 카드 드래그 상태 (그룹 밖 카드)
     const [freeDragState, setFreeDragState] = useState<{ id: number, startX: number, startY: number, initialTaskX: number, initialTaskY: number } | null>(null);
@@ -81,6 +86,19 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     } | null>(null);
 
     const [connectionDraft, setConnectionDraft] = useState<{ fromId: number, startX: number, startY: number, currX: number, currY: number, sourceHandle: 'left' | 'right' } | null>(null);
+
+    // 연결선 끝점 재연결 드래그 상태
+    const [connectionReconnect, setConnectionReconnect] = useState<{
+        connectionId: number;
+        draggingEnd: 'source' | 'target';  // 어느 끝을 드래그하는지
+        fixedCardId: number;               // 고정된 쪽 카드 ID
+        fixedHandle: 'left' | 'right';     // 고정된 쪽 핸들
+        originalCardId: number;            // 원래 연결되어 있던 카드 ID
+        originalHandle: 'left' | 'right';  // 원래 핸들
+        currX: number;
+        currY: number;
+    } | null>(null);
+
     const [activeMenu, setActiveMenu] = useState<{ id: number, x: number, y: number } | null>(null);
     const [backgroundMenu, setBackgroundMenu] = useState<{ x: number, y: number, taskX: number, taskY: number, targetTaskId?: number } | null>(null);
     const [selectionBox, setSelectionBox] = useState<{ startX: number, startY: number, currX: number, currY: number } | null>(null);
@@ -226,6 +244,49 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         setSvgSize({ width: container.scrollWidth, height: container.scrollHeight });
 
         connections.forEach((conn) => {
+            // 재연결 드래그 중인 연결선은 별도 처리
+            if (connectionReconnect?.connectionId === conn.id) {
+                const fixedEl = document.getElementById(`task-${connectionReconnect.fixedCardId}`);
+                if (fixedEl) {
+                    const fixedRect = fixedEl.getBoundingClientRect();
+                    const fixedPoint = getConnectionPoint(fixedRect, containerRect, container.scrollLeft, container.scrollTop, connectionReconnect.fixedHandle);
+
+                    let startX: number, startY: number, endX: number, endY: number;
+                    let sourceHandle: 'left' | 'right', targetHandle: 'left' | 'right';
+
+                    if (connectionReconnect.draggingEnd === 'source') {
+                        // source를 드래그 중 -> fixed는 target
+                        startX = connectionReconnect.currX;
+                        startY = connectionReconnect.currY;
+                        endX = fixedPoint.x;
+                        endY = fixedPoint.y;
+                        sourceHandle = 'right'; // 드래그 중 기본값
+                        targetHandle = connectionReconnect.fixedHandle;
+                    } else {
+                        // target을 드래그 중 -> fixed는 source
+                        startX = fixedPoint.x;
+                        startY = fixedPoint.y;
+                        endX = connectionReconnect.currX;
+                        endY = connectionReconnect.currY;
+                        sourceHandle = connectionReconnect.fixedHandle;
+                        targetHandle = 'left'; // 드래그 중 기본값
+                    }
+
+                    const pathString = conn.shape === 'straight'
+                        ? getStraightPath(startX, startY, endX, endY)
+                        : getBezierPath(startX, startY, endX, endY, sourceHandle, targetHandle);
+
+                    newLines.push(
+                        <g key={conn.id}>
+                            <path d={pathString} fill="none" stroke="#0a84ff" strokeWidth="2" strokeDasharray="5,5" strokeLinecap="round" />
+                            <circle cx={connectionReconnect.currX} cy={connectionReconnect.currY} r="6" fill="#0a84ff" className="animate-pulse" />
+                            <circle cx={fixedPoint.x} cy={fixedPoint.y} r="4" fill="#0a84ff" />
+                        </g>
+                    );
+                }
+                return;
+            }
+
             const fromEl = document.getElementById(`task-${conn.from}`);
             const toEl = document.getElementById(`task-${conn.to}`);
             if (fromEl && toEl) {
@@ -251,16 +312,54 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
                 newLines.push(
                     <g key={conn.id} className="group/line">
-                        <path d={pathString} fill="none" stroke="transparent" strokeWidth="20" strokeLinecap="round" className="cursor-pointer pointer-events-auto" onDoubleClick={(evt) => { evt.stopPropagation(); const rect = container.getBoundingClientRect(); setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop }); setBackgroundMenu(null); }} onContextMenu={(evt) => { evt.preventDefault(); evt.stopPropagation(); const rect = container.getBoundingClientRect(); setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop }); setBackgroundMenu(null); }} />
+                        {/* 투명한 넓은 히트 영역 - 드래그 및 컨텍스트 메뉴용 */}
+                        <path
+                            d={pathString}
+                            fill="none"
+                            stroke="transparent"
+                            strokeWidth="20"
+                            strokeLinecap="round"
+                            className="cursor-grab pointer-events-auto"
+                            onPointerDown={(evt) => {
+                                // 드래그 시작 - 마우스 위치와 가까운 끝점 감지
+                                evt.stopPropagation();
+                                const distToStart = Math.hypot(evt.clientX - (fromRect.left + (sourceHandle === 'left' ? 0 : fromRect.width)), evt.clientY - (fromRect.top + fromRect.height / 2));
+                                const distToEnd = Math.hypot(evt.clientX - (toRect.left + (targetHandle === 'left' ? 0 : toRect.width)), evt.clientY - (toRect.top + toRect.height / 2));
+
+                                if (distToStart < distToEnd) {
+                                    handleConnectionEndpointDragStart(evt, conn, 'source', startX, startY);
+                                } else {
+                                    handleConnectionEndpointDragStart(evt, conn, 'target', endX, endY);
+                                }
+                            }}
+                            onDoubleClick={(evt) => {
+                                evt.stopPropagation();
+                                const rect = container.getBoundingClientRect();
+                                setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop });
+                                setBackgroundMenu(null);
+                            }}
+                            onContextMenu={(evt) => {
+                                evt.preventDefault();
+                                evt.stopPropagation();
+                                const rect = container.getBoundingClientRect();
+                                setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop });
+                                setBackgroundMenu(null);
+                            }}
+                        />
+                        {/* 실제 보이는 연결선 */}
                         <path d={pathString} fill="none" stroke={isSelected ? "#0a84ff" : "rgba(128,128,128,0.4)"} strokeWidth="2" strokeLinecap="round" strokeDasharray={conn.style === 'dashed' ? "8,4" : "none"} className="transition-all duration-300 pointer-events-none group-hover/line:stroke-blue-400 group-hover/line:stroke-[3px]" />
+
+                        {/* Source 끝점 표시 (드래그 핸들 아님, 시각적 표시만) */}
                         <circle cx={startX} cy={startY} r="3" fill="rgba(128,128,128,0.5)" className="pointer-events-none group-hover/line:fill-blue-400" />
+
+                        {/* Target 끝점 화살표 */}
                         <path d={arrowPath} fill="rgba(128,128,128,0.5)" className="pointer-events-none group-hover/line:fill-blue-400" />
                     </g>
                 );
             }
         });
 
-        // 드래그 중인 연결선 (draft)
+        // 드래그 중인 연결선 (draft - 새 연결 생성용)
         if (connectionDraft) {
             const pathString = getBezierPath(
                 connectionDraft.startX,
@@ -279,7 +378,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
 
         setLines(newLines);
-    }, [connections, connectionDraft, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath]);
+    }, [connections, connectionDraft, connectionReconnect, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath]);
 
     useLayoutEffect(() => {
         updateConnections();
@@ -343,6 +442,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 cancelDrag();
                 setFreeDragState(null);
                 setGroupDragState(null);
+                setConnectionDraft(null);
+                cancelConnectionReconnect();
             }
         };
         window.addEventListener('keydown', handleKeyDown);
@@ -551,6 +652,97 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             onConnectionCreate(connectionDraft.fromId, targetId, connectionDraft.sourceHandle, handle);
         }
         setConnectionDraft(null);
+
+        // 연결선 재연결 드래그 종료 처리
+        if (connectionReconnect) {
+            handleConnectionReconnectEnd(targetId, handle);
+        }
+    };
+
+    // 연결선 끝점 드래그 시작 (선 위에서 드래그 시작 시 가까운 끝점 감지)
+    const handleConnectionEndpointDragStart = (
+        evt: React.PointerEvent<SVGElement>,
+        conn: Connection,
+        endpoint: 'source' | 'target',
+        x: number,
+        y: number
+    ) => {
+        evt.stopPropagation();
+        evt.preventDefault();
+
+        const sourceHandle = conn.sourceHandle || 'right';
+        const targetHandle = conn.targetHandle || 'left';
+
+        if (endpoint === 'source') {
+            // source 끝점 드래그 -> target이 고정
+            setConnectionReconnect({
+                connectionId: conn.id,
+                draggingEnd: 'source',
+                fixedCardId: conn.to,
+                fixedHandle: targetHandle,
+                originalCardId: conn.from,
+                originalHandle: sourceHandle,
+                currX: x,
+                currY: y,
+            });
+        } else {
+            // target 끝점 드래그 -> source가 고정
+            setConnectionReconnect({
+                connectionId: conn.id,
+                draggingEnd: 'target',
+                fixedCardId: conn.from,
+                fixedHandle: sourceHandle,
+                originalCardId: conn.to,
+                originalHandle: targetHandle,
+                currX: x,
+                currY: y,
+            });
+        }
+
+        setActiveMenu(null);
+        setBackgroundMenu(null);
+    };
+
+    // 연결선 재연결 드래그 종료 처리
+    const handleConnectionReconnectEnd = async (targetCardId: number, targetHandle: 'left' | 'right') => {
+        if (!connectionReconnect) return;
+
+        // 같은 카드에 재연결하는 것은 무시 (자기 자신에게 연결 불가)
+        if (targetCardId === connectionReconnect.fixedCardId) {
+            setConnectionReconnect(null);
+            return;
+        }
+
+        // 원래 카드와 같은 곳에 드롭하면 원상 복구
+        if (targetCardId === connectionReconnect.originalCardId && targetHandle === connectionReconnect.originalHandle) {
+            setConnectionReconnect(null);
+            return;
+        }
+
+        try {
+            if (connectionReconnect.draggingEnd === 'source') {
+                // source를 새 카드로 변경
+                await onConnectionUpdate(connectionReconnect.connectionId, {
+                    from: targetCardId,
+                    sourceHandle: targetHandle,
+                });
+            } else {
+                // target을 새 카드로 변경
+                await onConnectionUpdate(connectionReconnect.connectionId, {
+                    to: targetCardId,
+                    targetHandle: targetHandle,
+                });
+            }
+        } catch (err) {
+            console.error('Failed to update connection:', err);
+        }
+
+        setConnectionReconnect(null);
+    };
+
+    // 연결선 재연결 드래그 취소 (허공에 드롭)
+    const cancelConnectionReconnect = () => {
+        setConnectionReconnect(null);
     };
 
     const handlePointerMove = (e: React.PointerEvent) => {
@@ -624,6 +816,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             onTasksUpdate(tasks.map(t => t.id === freeDragState.id ? { ...t, x: newX, y: newY } : t));
         } else if (connectionDraft) {
             setConnectionDraft(prev => prev ? { ...prev, currX: x, currY: y } : null);
+        } else if (connectionReconnect) {
+            // 연결선 끝점 재연결 드래그 중
+            setConnectionReconnect(prev => prev ? { ...prev, currX: x, currY: y } : null);
         }
     };
 
@@ -725,6 +920,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             setGroupDragState(null);
         }
         if (connectionDraft) setConnectionDraft(null);
+
+        // 연결선 재연결 드래그 중 허공에 드롭 -> 원래 위치로 복귀
+        if (connectionReconnect) {
+            cancelConnectionReconnect();
+        }
     };
 
     const handleBackgroundContextMenu = (e: React.MouseEvent) => {
@@ -876,6 +1076,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                         onConnectStart={handleConnectStart}
                                         onConnectEnd={handleConnectEnd}
                                         onAttachFile={(taskId) => { setActiveTaskForFile(taskId); taskFileInputRef.current?.click(); }}
+                                        isFileDropTarget={fileDropTargetCardId === task.id}
+                                        onFileDragEnter={(taskId) => setFileDropTargetCardId(taskId)}
+                                        onFileDragLeave={() => setFileDropTargetCardId(null)}
+                                        onFileDrop={async (taskId, fileId) => {
+                                            if (onFileDropOnCard) {
+                                                await onFileDropOnCard(taskId, fileId);
+                                            }
+                                            setFileDropTargetCardId(null);
+                                        }}
                                         onStatusChange={async (taskId, newStatus) => {
                                             const targetColumn = sortedColumns.find(col => col.status === newStatus);
                                             if (targetColumn && onTaskUpdate) {
@@ -941,6 +1150,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         onConnectStart={handleConnectStart}
                         onConnectEnd={handleConnectEnd}
                         onAttachFile={(taskId) => { setActiveTaskForFile(taskId); taskFileInputRef.current?.click(); }}
+                        isFileDropTarget={fileDropTargetCardId === task.id}
+                        onFileDragEnter={(taskId) => setFileDropTargetCardId(taskId)}
+                        onFileDragLeave={() => setFileDropTargetCardId(null)}
+                        onFileDrop={async (taskId, fileId) => {
+                            if (onFileDropOnCard) {
+                                await onFileDropOnCard(taskId, fileId);
+                            }
+                            setFileDropTargetCardId(null);
+                        }}
                         onStatusChange={async (taskId, newStatus) => {
                             const targetColumn = sortedColumns.find(col => col.status === newStatus);
                             if (targetColumn && onTaskUpdate) {

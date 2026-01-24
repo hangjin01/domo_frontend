@@ -69,6 +69,7 @@ export {
   getConnections,
   createConnection,
   deleteConnection,
+  updateConnection,
   // 멤버
   getBoardMembers,
   // 편집 상태
@@ -84,6 +85,7 @@ export {
 
 // 파일 API
 export {
+  getProjectFiles,
   uploadFile,
   getFileDownloadUrl,
   getFileVersions,

@@ -900,10 +900,31 @@ export async function updateConnection(
     return { ...conn, ...updates };
   }
 
-  // 현재 백엔드에 PATCH API가 없으므로 삭제 후 재생성하거나
-  // 로컬에서만 처리 (추후 백엔드 API 추가 시 수정)
-  console.warn('Connection update API not implemented on backend');
-  throw new Error('연결선 업데이트 API가 구현되지 않았습니다.');
+  const response = await apiFetch<BackendConnectionResponse>(
+      `/cards/connections/${connectionId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          from: updates.from,
+          to: updates.to,
+          style: updates.style,
+          shape: updates.shape,
+          sourceHandle: updates.sourceHandle,
+          targetHandle: updates.targetHandle,
+        }),
+      }
+  );
+
+  return {
+    id: response.id,
+    from: response.from,
+    to: response.to,
+    boardId: response.boardId,
+    style: response.style as 'solid' | 'dashed',
+    shape: response.shape as 'bezier' | 'straight',
+    sourceHandle: (response.sourceHandle || response.source_handle || 'right') as 'left' | 'right',
+    targetHandle: (response.targetHandle || response.target_handle || 'left') as 'left' | 'right',
+  };
 }
 
 // ============================================

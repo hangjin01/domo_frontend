@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Task, Comment, Tag as TagType } from '@/src/models/types';
 import { STICKY_COLORS, getStickyStyle } from '@/src/models/utils/canvas';
-import { createCardComment, getCardComments, deleteCardComment } from '@/src/models/api';
+import { createCardComment, getCardComments, deleteCardComment, detachFileFromCard } from '@/src/models/api';
+import { FileVersionDropdown } from '@/src/views/common';
 import {
     CreditCard, Palette, X, Briefcase, FileText, StickyNote, AlignLeft,
-    Paperclip, Download, List, Bookmark, Tag, Clock, Plus, CheckSquare, ChevronRight, Loader2, Trash2
+    Paperclip, List, Bookmark, Tag, Clock, Plus, CheckSquare, ChevronRight, Loader2, Trash2, Unlink
 } from 'lucide-react';
 
 interface TaskDetailModalProps {
@@ -51,6 +52,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     const [isLoadingComments, setIsLoadingComments] = useState(false);
     const [isSavingComment, setIsSavingComment] = useState(false);
     const [deletingCommentId, setDeletingCommentId] = useState<number | null>(null);
+
+    // 파일 연결 해제 상태
+    const [detachingFileId, setDetachingFileId] = useState<number | null>(null);
 
     // task가 변경될 때 상태 동기화 (useCallback으로 분리)
     const syncTaskState = useCallback(() => {
@@ -179,6 +183,29 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             alert('댓글 삭제에 실패했습니다.');
         } finally {
             setDeletingCommentId(null);
+        }
+    };
+
+    // 파일 연결 해제 핸들러
+    const handleDetachFile = async (fileId: number) => {
+        if (detachingFileId) return;
+
+        setDetachingFileId(fileId);
+        const previousFiles = [...(task.files || [])];
+
+        // 낙관적 UI 업데이트
+        const updatedFiles = previousFiles.filter(f => f.id !== fileId);
+        onUpdate({ ...task, files: updatedFiles });
+
+        try {
+            await detachFileFromCard(task.id, fileId);
+        } catch (error) {
+            console.error('Failed to detach file:', error);
+            // 실패 시 롤백
+            onUpdate({ ...task, files: previousFiles });
+            alert('파일 연결 해제에 실패했습니다.');
+        } finally {
+            setDetachingFileId(null);
         }
     };
 
@@ -381,7 +408,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     </div>
                                     <div className="ml-8 grid gap-2">
                                         {task.files.map((file, idx) => (
-                                            <div key={idx} className="flex items-center justify-between p-3 bg-white dark:bg-[#22272b] border border-gray-200 dark:border-gray-700/50 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-[#2c333a] transition-colors">
+                                            <div key={file.id || idx} className="group flex items-center justify-between p-3 bg-white dark:bg-[#22272b] border border-gray-200 dark:border-gray-700/50 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-[#2c333a] transition-colors">
                                                 <div className="flex items-center gap-3 overflow-hidden">
                                                     <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center shrink-0">
                                                         <FileText size={16} className="text-gray-500 dark:text-gray-400" />
@@ -391,13 +418,38 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                         <div className="text-xs text-gray-500 dark:text-gray-400">{(file.size / 1024).toFixed(1)} KB</div>
                                                     </div>
                                                 </div>
-                                                <a
-                                                    href={file.url}
-                                                    download={file.name}
-                                                    className="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full text-gray-500 dark:text-gray-400 hover:text-domo-primary transition-colors"
-                                                >
-                                                    <Download size={16} />
-                                                </a>
+                                                <div className="flex items-center gap-1">
+                                                    {file.id ? (
+                                                        <FileVersionDropdown
+                                                            fileId={file.id}
+                                                            filename={file.name}
+                                                            buttonClassName="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full text-gray-500 dark:text-gray-400 hover:text-domo-primary transition-colors"
+                                                        />
+                                                    ) : (
+                                                        <a
+                                                            href={file.url}
+                                                            download={file.name}
+                                                            className="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full text-gray-500 dark:text-gray-400 hover:text-domo-primary transition-colors"
+                                                            title="다운로드"
+                                                        >
+                                                            <FileText size={16} />
+                                                        </a>
+                                                    )}
+                                                    {file.id && (
+                                                        <button
+                                                            onClick={() => handleDetachFile(file.id!)}
+                                                            disabled={detachingFileId === file.id}
+                                                            className="p-2 opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full text-gray-400 hover:text-red-500 transition-all"
+                                                            title="연결 해제"
+                                                        >
+                                                            {detachingFileId === file.id ? (
+                                                                <Loader2 size={16} className="animate-spin" />
+                                                            ) : (
+                                                                <Unlink size={16} />
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
