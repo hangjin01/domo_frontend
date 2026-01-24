@@ -798,9 +798,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerUp}
             >
-                <svg className="absolute top-0 left-0 pointer-events-none z-[15]" style={{ width: Math.max(svgSize.width, 2000), height: Math.max(svgSize.height, 2000) }}>{lines}</svg>
-
-                {/* ✅ 그룹 렌더링 - SortableGroup 사용 */}
+                {/* ========== 레이어 1: 그룹 배경 (z-0) ========== */}
                 {groups.map(group => {
                     const groupTasks = tasks.filter(t => t.column_id === group.id);
                     const isDropTarget = dropPreview?.groupId === group.id;
@@ -818,72 +816,83 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             onDelete={onGroupDelete}
                             gridConfig={gridConfig}
                         >
-                            {/* 그룹 내 카드들 */}
-                            {cardPositions
-                                .filter(pos => pos.groupId === group.id)
-                                .map(pos => {
-                                    if (pos.isPlaceholder) {
-                                        return (
-                                            <DropPlaceholder
-                                                key="placeholder"
-                                                x={pos.x - group.x}
-                                                y={pos.y - group.y}
-                                                width={gridConfig.cardWidth}
-                                                height={gridConfig.cardHeight}
-                                                isVisible={true}
-                                            />
-                                        );
-                                    }
-
-                                    const task = tasks.find(t => t.id === pos.taskId);
-                                    if (!task) return null;
-
-                                    const isDragging = isTaskBeingDragged(task.id);
-                                    const transition = getCardTransition(task.id);
-
-                                    // 드래그 중인 카드는 별도 렌더링
-                                    if (isDragging) return null;
-
-                                    return (
-                                        <SortableCard
-                                            key={task.id}
-                                            taskId={task.id}
-                                            x={pos.x - group.x}
-                                            y={pos.y - group.y}
-                                            width={gridConfig.cardWidth}
-                                            height={gridConfig.cardHeight}
-                                            translateX={transition.x}
-                                            translateY={transition.y}
-                                            isDragging={false}
-                                            onDragStart={handleSortableCardDragStart}
-                                        >
-                                            <TaskCard
-                                                task={task}
-                                                variant="sticky"
-                                                isSelected={selectedTaskIds.has(task.id)}
-                                                onClick={() => onTaskSelect(task)}
-                                                onConnectStart={handleConnectStart}
-                                                onConnectEnd={handleConnectEnd}
-                                                onAttachFile={(taskId) => { setActiveTaskForFile(taskId); taskFileInputRef.current?.click(); }}
-                                                onStatusChange={async (taskId, newStatus) => {
-                                                    const targetColumn = sortedColumns.find(col => col.status === newStatus);
-                                                    if (targetColumn && onTaskUpdate) {
-                                                        try {
-                                                            await onTaskUpdate(taskId, {
-                                                                status: newStatus as Task['status'],
-                                                                column_id: targetColumn.id
-                                                            });
-                                                        } catch (err) {
-                                                            console.error('Failed to update task status:', err);
-                                                        }
-                                                    }
-                                                }}
-                                            />
-                                        </SortableCard>
-                                    );
-                                })}
+                            {/* 카드는 여기서 렌더링하지 않음 - 레이어 3에서 별도 렌더링 */}
+                            {null}
                         </SortableGroup>
                     );
+                })}
+
+                {/* ========== 레이어 2: 연결선 SVG (z-10) ========== */}
+                <svg className="absolute top-0 left-0 pointer-events-none z-10" style={{ width: Math.max(svgSize.width, 2000), height: Math.max(svgSize.height, 2000) }}>{lines}</svg>
+
+                {/* ========== 레이어 3: 카드들 (z-20) ========== */}
+                {groups.map(group => {
+                    if (group.collapsed) return null;
+
+                    return cardPositions
+                        .filter(pos => pos.groupId === group.id)
+                        .map(pos => {
+                            if (pos.isPlaceholder) {
+                                return (
+                                    <DropPlaceholder
+                                        key={`placeholder-${group.id}`}
+                                        x={pos.x}
+                                        y={pos.y}
+                                        width={gridConfig.cardWidth}
+                                        height={gridConfig.cardHeight}
+                                        isVisible={true}
+                                    />
+                                );
+                            }
+
+                            const task = tasks.find(t => t.id === pos.taskId);
+                            if (!task) return null;
+
+                            const isDragging = isTaskBeingDragged(task.id);
+                            const transition = getCardTransition(task.id);
+
+                            // 드래그 중인 카드는 별도 렌더링
+                            if (isDragging) return null;
+
+                            return (
+                                <div
+                                    key={task.id}
+                                    className="absolute z-20"
+                                    style={{
+                                        left: pos.x,
+                                        top: pos.y,
+                                        width: gridConfig.cardWidth,
+                                        height: gridConfig.cardHeight,
+                                        transform: `translate(${transition.x}px, ${transition.y}px)`,
+                                        transition: transition.x !== 0 || transition.y !== 0 ? 'transform 200ms ease-out' : 'none',
+                                    }}
+                                >
+                                    <TaskCard
+                                        task={task}
+                                        variant="sticky"
+                                        isSelected={selectedTaskIds.has(task.id)}
+                                        onClick={() => onTaskSelect(task)}
+                                        onPointerDown={(e) => handleSortableCardDragStart(task.id, e)}
+                                        onConnectStart={handleConnectStart}
+                                        onConnectEnd={handleConnectEnd}
+                                        onAttachFile={(taskId) => { setActiveTaskForFile(taskId); taskFileInputRef.current?.click(); }}
+                                        onStatusChange={async (taskId, newStatus) => {
+                                            const targetColumn = sortedColumns.find(col => col.status === newStatus);
+                                            if (targetColumn && onTaskUpdate) {
+                                                try {
+                                                    await onTaskUpdate(taskId, {
+                                                        status: newStatus as Task['status'],
+                                                        column_id: targetColumn.id
+                                                    });
+                                                } catch (err) {
+                                                    console.error('Failed to update task status:', err);
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            );
+                        });
                 })}
 
                 {/* ✅ 드래그 중인 카드 (절대 위치로 렌더링) */}
