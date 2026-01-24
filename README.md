@@ -263,11 +263,11 @@ import { Mascot, FileVersionDropdown } from '@/src/views/common';
 **사용:**
 ```typescript
 import {
-  LoginScreen,
-  SignupScreen,
-  WorkspaceListScreen,
-  ProjectSelectScreen,
-  BoardScreen,
+    LoginScreen,
+    SignupScreen,
+    WorkspaceListScreen,
+    ProjectSelectScreen,
+    BoardScreen,
 } from '@/src/containers/screens';
 ```
 
@@ -304,9 +304,12 @@ import { useSortableGrid } from '@/src/containers/hooks/board';
 |------|------|
 | **드래그 앤 드롭** | 포스트잇 스타일 태스크 카드 자유 배치 |
 | **연결선** | 태스크 간 관계 시각화 (Bezier/Straight, Solid/Dashed) |
+| **연결선 호버 피드백** | 마우스 위치 기반 가까운 끝점 하이라이트 |
 | **그룹핑** | 여러 카드를 그룹으로 묶기 (`Ctrl + Drag`로 선택 후 `C`) |
+| **우클릭 팬** | 우클릭 + 드래그로 캔버스 이동 |
 | **스냅 투 그리드** | 정렬 도우미 |
 | **파일 카드** | 파일 업로드 → 캔버스에 파일 카드 생성 |
+| **카드 드래그 Threshold** | 8px 이상 이동 시 드래그 시작 (클릭과 구분) |
 
 ### 4.2 다중 뷰 모드
 
@@ -323,6 +326,9 @@ import { useSortableGrid } from '@/src/containers/hooks/board';
 |------|------|
 | **파일 목록 패널** | Dock 파일 버튼으로 토글, 프로젝트 파일 목록 표시 |
 | **파일 업로드** | 드래그&드롭 또는 버튼 클릭으로 업로드 |
+| **네이티브 파일 드롭** | 바탕화면에서 캔버스로 직접 파일 드래그 앤 드롭 |
+| **카드에 파일 드롭** | 파일을 카드 위에 드롭하면 업로드 + 카드에 첨부 |
+| **배경에 파일 드롭** | 파일을 캔버스 배경에 드롭하면 프로젝트 파일로 업로드 + 파일 패널 열림 |
 | **버전 관리** | 동일 파일명 업로드 시 자동 버전 업데이트 (v1, v2, ...) |
 | **버전 히스토리** | 다운로드 버튼 클릭 시 버전 목록에서 원하는 버전 선택 |
 | **카드 첨부** | 파일을 카드 위로 드래그하여 첨부 |
@@ -440,6 +446,8 @@ interface Group {
     y: number;
     width: number;
     height: number;
+    localX?: number;     // 백엔드 저장 위치 (새로고침 시 복원용)
+    localY?: number;     // 백엔드 저장 위치 (새로고침 시 복원용)
     parentId?: number | null;
     depth: number;
     collapsed?: boolean;
@@ -756,6 +764,18 @@ app.add_middleware(
 - **View**: 순수 UI만 (props → 렌더링). 상태 관리 X, API 호출 X
 - **Screen**: 상태 관리, API 호출, 이벤트 핸들링, View 조합
 
+### Q: 그룹 위치가 새로고침 시 초기화됨
+**A:** `board.ts` API에서 백엔드가 반환하는 `localX`, `localY` 필드를 보존해야 함. 프론트에서 위치를 재계산하면 안 됨.
+
+### Q: 연결선 호버 피드백이 안 보임
+**A:** SVG z-index(z-10)가 카드(z-20)보다 낮아 가려짐. 호버된 끝점을 별도 레이어(z-30)에 렌더링하여 해결.
+
+### Q: 파일 드롭 시 브라우저가 파일을 열어버림
+**A:** 캔버스 컨테이너에 `onDragOver`, `onDrop` 이벤트에서 `e.preventDefault()` 호출 필요.
+
+### Q: 카드 클릭 시 의도치 않게 드래그가 시작됨
+**A:** 카드 드래그에 threshold(8px) 적용. 8px 이상 이동해야 드래그 시작, 그 전에 놓으면 클릭으로 처리.
+
 ---
 
 ## 참고 문서
@@ -780,4 +800,21 @@ MIT License
 
 ---
 
-**Last Updated**: 2025-01-24
+## 개발 상태
+
+### 완료된 기능 (2025-01-25)
+- [x] 그룹 위치 백엔드 저장/복원
+- [x] 연결선 호버 시 끝점 피드백
+- [x] 우클릭 캔버스 팬
+- [x] 네이티브 파일 드롭 (카드/배경)
+- [x] 카드 드래그 threshold
+
+### 진행 중
+- [ ] 온라인 멤버 실시간 표시 (SSE 백엔드 대기)
+
+### 예정
+- [ ] 낙관적 UI 업데이트 (성능 최적화)
+
+---
+
+**Last Updated**: 2025-01-25
