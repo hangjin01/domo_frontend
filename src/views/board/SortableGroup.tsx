@@ -58,11 +58,8 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
         }
     }, [isEditingTitle]);
 
-    // 그룹 내 카드 수에 따른 동적 높이 계산
+    // 그룹 내 카드 수 (표시용)
     const cardCount = tasks.filter(t => t.column_id === group.id).length;
-    const rows = Math.ceil((cardCount + (dropPreviewIndex !== null ? 1 : 0)) / gridConfig.columns);
-    const contentHeight = rows * (gridConfig.cardHeight + gridConfig.gap) - gridConfig.gap;
-    const minHeight = gridConfig.headerHeight + gridConfig.padding * 2 + Math.max(contentHeight, gridConfig.cardHeight);
 
     const handleTitleSubmit = () => {
         if (editTitle.trim() && editTitle !== group.title) {
@@ -95,7 +92,7 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
                 left: group.x,
                 top: group.y,
                 width: group.width,
-                height: group.collapsed ? gridConfig.headerHeight + 10 : Math.max(group.height, minHeight),
+                height: group.collapsed ? gridConfig.headerHeight + 10 : group.height,
                 backgroundColor: group.color ? `${group.color}20` : undefined,
                 cursor: 'grab',
             }}
