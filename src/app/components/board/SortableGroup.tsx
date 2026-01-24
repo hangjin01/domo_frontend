@@ -83,12 +83,7 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
     return (
         <div
             className={`
-    absolute rounded-2xl border-2 border-dashed transition-all duration-200
-    ${isDropTarget
-                ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-900/20 shadow-lg shadow-blue-200/50'
-                : 'border-gray-300/60 dark:border-white/10 bg-white/30 dark:bg-white/5'
-            }
-    backdrop-blur-sm hover:border-blue-400/50 hover:bg-white/40 dark:hover:bg-white/10
+    absolute rounded-2xl transition-all duration-200
     group/sortable-group
 `}
             style={{
@@ -96,14 +91,29 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
                 top: group.y,
                 width: group.width,
                 height: group.collapsed ? gridConfig.headerHeight + 10 : Math.max(group.height, minHeight),
-                backgroundColor: group.color ? `${group.color}20` : undefined,
                 cursor: 'grab',
             }}
             onPointerDown={(e) => onPointerDown?.(e, group)}
         >
+            {/* 배경 레이어 (z-0 - 연결선 아래) */}
+            <div
+                className={`
+                    absolute inset-0 rounded-2xl border-2 border-dashed transition-all duration-200
+                    ${isDropTarget
+                    ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-900/20 shadow-lg shadow-blue-200/50'
+                    : 'border-gray-300/60 dark:border-white/10 bg-white/30 dark:bg-white/5'
+                }
+                    backdrop-blur-sm hover:border-blue-400/50 hover:bg-white/40 dark:hover:bg-white/10
+                    z-0
+                `}
+                style={{
+                    backgroundColor: group.color ? `${group.color}20` : undefined,
+                }}
+            />
+
             {/* 헤더 */}
             <div
-                className="absolute -top-10 left-0 flex items-center gap-2"  // 👈 -top-10
+                className="absolute -top-10 left-0 flex items-center gap-2 z-30"
                 onPointerDown={(e) => e.stopPropagation()}
             >
                 {/* 접기/펼치기 버튼 */}
@@ -148,8 +158,8 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
                 ) : (
                     <div
                         className="flex items-center gap-2 text-gray-500 dark:text-gray-400
-                       hover:text-gray-900 dark:hover:text-white font-bold text-sm 
-                       cursor-text px-3 py-1.5 hover:bg-white/50 dark:hover:bg-white/10 
+                       hover:text-gray-900 dark:hover:text-white font-bold text-sm
+                       cursor-text px-3 py-1.5 hover:bg-white/50 dark:hover:bg-white/10
                        rounded-xl transition-colors backdrop-blur-md"
                         onClick={() => setIsEditingTitle(true)}
                     >
@@ -162,10 +172,10 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
                 )}
             </div>
 
-            {/* 카드 컨테이너 */}
+            {/* 카드 컨테이너 (z-30 - 연결선 위) */}
             {!group.collapsed && (
                 <div
-                    className="relative w-full h-full"
+                    className="relative w-full h-full z-30"
                     style={{
                         padding: gridConfig.padding,
                         paddingTop: gridConfig.headerHeight + gridConfig.padding,
@@ -177,7 +187,7 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
 
             {/* 드롭 인디케이터 */}
             {isDropTarget && !group.collapsed && (
-                <div className="absolute inset-0 pointer-events-none rounded-2xl ring-2 ring-blue-400 ring-inset" />
+                <div className="absolute inset-0 pointer-events-none rounded-2xl ring-2 ring-blue-400 ring-inset z-0" />
             )}
         </div>
     );
@@ -268,7 +278,7 @@ export const SortableCard: React.FC<SortableCardProps> = ({
         <div
             className={`
         absolute transition-transform duration-200 ease-out
-        ${isDragging ? 'z-50 cursor-grabbing' : 'cursor-grab'}
+        ${isDragging ? 'z-50 cursor-grabbing' : 'z-10 cursor-grab'}
       `}
             style={{
                 left: x,

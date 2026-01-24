@@ -5,28 +5,59 @@ import { LoginScreen } from "./components/LoginScreen";
 import { SignupScreen } from "./components/SignupScreen";
 import { VerifyEmailScreen } from "./components/VerifyEmailScreen";
 import { VerifySuccessScreen } from "./components/VerifySuccessScreen";
-import { ProjectSelect } from "./components/ui/ProjectSelect";
+import { WorkspaceListScreen, WorkspaceHomeScreen } from "./components/workspace";
 import { WorkspaceBoard } from "./components/board/WorkspaceBoard";
-import type { Project, AuthUser } from "../types/index";
+import type { Project, AuthUser, Workspace } from "../types/index";
 
 type AuthScreen = 'login' | 'signup' | 'verify' | 'verify-success';
 
 export default function Home() {
+    // 인증 상태
     const [user, setUser] = useState<AuthUser | null>(null);
-    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-
-    // 인증 화면 상태 관리
     const [authScreen, setAuthScreen] = useState<AuthScreen>('login');
     const [pendingEmail, setPendingEmail] = useState<string>('');
 
+    // 워크스페이스/프로젝트 상태
+    const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
+    // === 인증 핸들러 ===
     const handleLoginSuccess = (loggedInUser: AuthUser) => {
         setUser(loggedInUser);
     };
 
     const handleLogout = () => {
         setUser(null);
+        setSelectedWorkspace(null);
         setSelectedProject(null);
         setAuthScreen('login');
+    };
+
+    const handleSignupSuccess = (email: string) => {
+        setPendingEmail(email);
+        setAuthScreen('verify');
+    };
+
+    const handleVerifySuccess = () => {
+        setAuthScreen('verify-success');
+    };
+
+    const handleResendCode = async () => {
+        try {
+            console.log('인증 코드 재전송 요청:', pendingEmail);
+        } catch (err) {
+            console.error('재전송 실패:', err);
+        }
+    };
+
+    // === 워크스페이스/프로젝트 핸들러 ===
+    const handleSelectWorkspace = (workspace: Workspace) => {
+        setSelectedWorkspace(workspace);
+    };
+
+    const handleBackToWorkspaces = () => {
+        setSelectedWorkspace(null);
+        setSelectedProject(null);
     };
 
     const handleSelectProject = (project: Project) => {
@@ -37,32 +68,11 @@ export default function Home() {
         setSelectedProject(null);
     };
 
-    // 회원가입 성공 시 → 이메일 인증 화면으로
-    const handleSignupSuccess = (email: string) => {
-        setPendingEmail(email);
-        setAuthScreen('verify');
-    };
+    // =====================================
+    // 화면 렌더링 로직
+    // =====================================
 
-    // 이메일 인증 성공 시 → 성공 화면으로
-    const handleVerifySuccess = () => {
-        setAuthScreen('verify-success');
-    };
-
-    // 인증 코드 재전송
-    const handleResendCode = async () => {
-        // 백엔드에 재전송 API가 있다면 호출
-        // 현재는 signup을 다시 호출하면 코드가 재생성됨
-        // 실제로는 별도의 resend API를 만드는 것이 좋음
-        try {
-            // 임시: 콘솔에 로그만 출력
-            console.log('인증 코드 재전송 요청:', pendingEmail);
-            // await resendVerificationCode(pendingEmail);
-        } catch (err) {
-            console.error('재전송 실패:', err);
-        }
-    };
-
-    // 로그인 전 - 인증 화면들
+    // 1. 로그인 전 - 인증 화면들
     if (!user) {
         switch (authScreen) {
             case 'signup':
@@ -100,18 +110,31 @@ export default function Home() {
         }
     }
 
-    // 로그인됨, 프로젝트 미선택 → 프로젝트 선택 화면
-    if (!selectedProject) {
+    // 2. 로그인됨, 워크스페이스 미선택 → 워크스페이스 목록 화면
+    if (!selectedWorkspace) {
         return (
-            <ProjectSelect
+            <WorkspaceListScreen
                 user={user}
-                onSelectProject={handleSelectProject}
+                onSelectWorkspace={handleSelectWorkspace}
                 onLogout={handleLogout}
             />
         );
     }
 
-    // 프로젝트 선택됨 → 워크스페이스 보드
+    // 3. 워크스페이스 선택됨, 프로젝트 미선택 → 워크스페이스 홈 (프로젝트 목록)
+    if (!selectedProject) {
+        return (
+            <WorkspaceHomeScreen
+                workspace={selectedWorkspace}
+                user={user}
+                onSelectProject={handleSelectProject}
+                onBack={handleBackToWorkspaces}
+                onLogout={handleLogout}
+            />
+        );
+    }
+
+    // 4. 프로젝트 선택됨 → 워크스페이스 보드
     return (
         <div className="h-screen w-full overflow-hidden">
             <WorkspaceBoard

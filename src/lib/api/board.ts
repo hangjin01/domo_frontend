@@ -819,8 +819,8 @@ export async function getConnections(projectId: number): Promise<Connection[]> {
     style: conn.style as 'solid' | 'dashed',
     shape: conn.shape as 'bezier' | 'straight',
     // 백엔드가 snake_case로 보내면 변환
-    sourceHandle: (conn.sourceHandle || conn.source_handle || 'right') as 'left' | 'right' | 'top' | 'bottom',
-    targetHandle: (conn.targetHandle || conn.target_handle || 'left') as 'left' | 'right' | 'top' | 'bottom',
+    sourceHandle: (conn.sourceHandle || conn.source_handle || 'right') as 'left' | 'right',
+    targetHandle: (conn.targetHandle || conn.target_handle || 'left') as 'left' | 'right',
   }));
 }
 
@@ -860,8 +860,8 @@ export async function createConnection(
     boardId: response.boardId || projectId,
     style: response.style as 'solid' | 'dashed',
     shape: response.shape as 'bezier' | 'straight',
-    sourceHandle: (response.sourceHandle || response.source_handle || 'right') as 'left' | 'right' | 'top' | 'bottom',
-    targetHandle: (response.targetHandle || response.target_handle || 'left') as 'left' | 'right' | 'top' | 'bottom',
+    sourceHandle: (response.sourceHandle || response.source_handle || 'right') as 'left' | 'right',
+    targetHandle: (response.targetHandle || response.target_handle || 'left') as 'left' | 'right',
   };
 }
 
@@ -912,6 +912,7 @@ export async function updateConnection(
 
 /**
  * 프로젝트 팀 멤버 조회 (온/오프라인 상태 포함)
+ * 백엔드에 /projects/{id}/members API가 없으므로 워크스페이스 멤버 활용
  */
 export async function getBoardMembers(projectId: number): Promise<Member[]> {
   if (API_CONFIG.USE_MOCK) {
@@ -919,15 +920,36 @@ export async function getBoardMembers(projectId: number): Promise<Member[]> {
     return MOCK_MEMBERS;
   }
 
-  return apiFetch<Member[]>(`/projects/${projectId}/members`);
+  // 프로젝트 정보에서 workspace_id를 가져와서 워크스페이스 멤버 조회
+  try {
+    // 1. 프로젝트 정보를 통해 workspace_id 확인
+    const { getMyProjects, getWorkspaceMembers } = await import('./workspace');
+    const allProjects = await getMyProjects();
+    const project = allProjects.find(p => p.id === projectId);
+
+    if (!project?.workspace_id) {
+      console.warn('프로젝트의 workspace_id를 찾을 수 없습니다.');
+      return MOCK_MEMBERS;
+    }
+
+    // 2. 워크스페이스 멤버 조회
+    const members = await getWorkspaceMembers(project.workspace_id);
+    return members;
+  } catch (error) {
+    console.error('보드 멤버 조회 실패:', error);
+    return MOCK_MEMBERS;
+  }
 }
 
 // ============================================
 // 실시간 편집 상태 API
+// ⚠️ 백엔드에 해당 엔드포인트가 아직 구현되지 않음
+// 에러 발생 시 빈 배열/무시 처리
 // ============================================
 
 /**
  * 현재 수정 중인 카드 목록 조회
+ * ⚠️ 백엔드 API 미구현 - fallback으로 빈 배열 반환
  */
 export async function getEditingCards(projectId: number): Promise<EditingCard[]> {
   if (API_CONFIG.USE_MOCK) {
@@ -935,11 +957,18 @@ export async function getEditingCards(projectId: number): Promise<EditingCard[]>
     return MOCK_EDITING_CARDS;
   }
 
-  return apiFetch<EditingCard[]>(`/projects/${projectId}/editing-cards`);
+  try {
+    return await apiFetch<EditingCard[]>(`/projects/${projectId}/editing-cards`);
+  } catch (error) {
+    // 백엔드 API가 없으면 빈 배열 반환 (기능 비활성화)
+    console.warn('[getEditingCards] API not implemented, returning empty array');
+    return [];
+  }
 }
 
 /**
  * 카드 편집 시작 알림
+ * ⚠️ 백엔드 API 미구현 - 에러 무시
  */
 export async function startEditingCard(cardId: number): Promise<void> {
   if (API_CONFIG.USE_MOCK) {
@@ -947,13 +976,19 @@ export async function startEditingCard(cardId: number): Promise<void> {
     return;
   }
 
-  await apiFetch<void>(`/cards/${cardId}/editing`, {
-    method: 'POST',
-  });
+  try {
+    await apiFetch<void>(`/cards/${cardId}/editing`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    // 백엔드 API가 없으면 무시
+    console.warn('[startEditingCard] API not implemented, ignoring');
+  }
 }
 
 /**
  * 카드 편집 종료 알림
+ * ⚠️ 백엔드 API 미구현 - 에러 무시
  */
 export async function stopEditingCard(cardId: number): Promise<void> {
   if (API_CONFIG.USE_MOCK) {
@@ -961,9 +996,14 @@ export async function stopEditingCard(cardId: number): Promise<void> {
     return;
   }
 
-  await apiFetch<void>(`/cards/${cardId}/editing`, {
-    method: 'DELETE',
-  });
+  try {
+    await apiFetch<void>(`/cards/${cardId}/editing`, {
+      method: 'DELETE',
+    });
+  } catch (error) {
+    // 백엔드 API가 없으면 무시
+    console.warn('[stopEditingCard] API not implemented, ignoring');
+  }
 }
 
 // ============================================

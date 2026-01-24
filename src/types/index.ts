@@ -145,8 +145,8 @@ export interface Connection {
   shape?: 'bezier' | 'straight';
   style?: 'solid' | 'dashed';
   boardId?: number;
-  sourceHandle?: 'left' | 'right' | 'top' | 'bottom';
-  targetHandle?: 'left' | 'right' | 'top' | 'bottom';
+  sourceHandle?: 'left' | 'right';
+  targetHandle?: 'left' | 'right';
 }
 
 export interface Group {

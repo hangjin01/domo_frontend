@@ -153,6 +153,71 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (!showBoardMenu) resetBoardMenuState();
     }, [showBoardMenu, resetBoardMenuState]);
 
+    // ============================================
+    // 연결선(Connection) 관련 유틸리티 함수들
+    // ============================================
+
+    // Handle 위치에 따른 연결점 좌표 계산
+    const getConnectionPoint = useCallback((
+        rect: DOMRect,
+        containerRect: DOMRect,
+        scrollLeft: number,
+        scrollTop: number,
+        handle: 'left' | 'right' | undefined
+    ) => {
+        const offsetX = -containerRect.left + scrollLeft;
+        const offsetY = -containerRect.top + scrollTop;
+
+        if (handle === 'left') {
+            return { x: rect.left + offsetX, y: rect.top + rect.height / 2 + offsetY };
+        }
+        // 'right' 또는 기본값
+        return { x: rect.right + offsetX, y: rect.top + rect.height / 2 + offsetY };
+    }, []);
+
+    // 화살표 SVG 경로 계산 (targetHandle 방향에 따라)
+    const getArrowPath = useCallback((endX: number, endY: number, handle: 'left' | 'right' | undefined) => {
+        const size = 8;
+        if (handle === 'right') {
+            // 오른쪽에서 들어오는 화살표 (← 방향)
+            return `M ${endX} ${endY} L ${endX - size} ${endY - size/2} L ${endX - size} ${endY + size/2} Z`;
+        }
+        // 'left' 또는 기본값: 왼쪽에서 들어오는 화살표 (→ 방향)
+        return `M ${endX} ${endY} L ${endX + size} ${endY - size/2} L ${endX + size} ${endY + size/2} Z`;
+    }, []);
+
+    // Bezier 곡선 경로 계산
+    const getBezierPath = useCallback((
+        startX: number,
+        startY: number,
+        endX: number,
+        endY: number,
+        sourceHandle: 'left' | 'right' | undefined,
+        targetHandle: 'left' | 'right' | undefined
+    ) => {
+        const dist = Math.abs(endX - startX);
+        const offset = Math.max(dist * 0.5, 50);
+
+        // sourceHandle에 따라 제어점1 방향 결정
+        const cp1x = sourceHandle === 'left' ? startX - offset : startX + offset;
+        const cp1y = startY;
+
+        // targetHandle에 따라 제어점2 방향 결정
+        const cp2x = targetHandle === 'right' ? endX + offset : endX - offset;
+        const cp2y = endY;
+
+        return `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+    }, []);
+
+    // 직선 경로 계산
+    const getStraightPath = useCallback((startX: number, startY: number, endX: number, endY: number) => {
+        return `M ${startX} ${startY} L ${endX} ${endY}`;
+    }, []);
+
+    // ============================================
+    // 연결선 렌더링
+    // ============================================
+
     const updateConnections = useCallback(() => {
         if (!containerRef.current) return;
         const container = containerRef.current;
@@ -166,39 +231,55 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             if (fromEl && toEl) {
                 const fromRect = fromEl.getBoundingClientRect();
                 const toRect = toEl.getBoundingClientRect();
-                const startX = fromRect.right - containerRect.left + container.scrollLeft;
-                const startY = fromRect.top - containerRect.top + fromRect.height / 2 + container.scrollTop;
-                const endX = toRect.left - containerRect.left + container.scrollLeft;
-                const endY = toRect.top - containerRect.top + toRect.height / 2 + container.scrollTop;
-                const dist = Math.abs(endX - startX);
-                let pathString: string;
-                if (conn.shape === 'straight') {
-                    pathString = `M ${startX} ${startY} L ${endX} ${endY}`;
-                } else {
-                    const cp1x = startX + dist * 0.5;
-                    const cp2x = endX - dist * 0.5;
-                    pathString = `M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}`;
-                }
+
+                const sourceHandle = conn.sourceHandle || 'right';
+                const targetHandle = conn.targetHandle || 'left';
+
+                const startPoint = getConnectionPoint(fromRect, containerRect, container.scrollLeft, container.scrollTop, sourceHandle);
+                const endPoint = getConnectionPoint(toRect, containerRect, container.scrollLeft, container.scrollTop, targetHandle);
+
+                const { x: startX, y: startY } = startPoint;
+                const { x: endX, y: endY } = endPoint;
+
+                // 직선 또는 곡선 경로 생성
+                const pathString = conn.shape === 'straight'
+                    ? getStraightPath(startX, startY, endX, endY)
+                    : getBezierPath(startX, startY, endX, endY, sourceHandle, targetHandle);
+
                 const isSelected = activeMenu?.id === conn.id;
+                const arrowPath = getArrowPath(endX, endY, targetHandle);
+
                 newLines.push(
                     <g key={conn.id} className="group/line">
                         <path d={pathString} fill="none" stroke="transparent" strokeWidth="20" strokeLinecap="round" className="cursor-pointer pointer-events-auto" onDoubleClick={(evt) => { evt.stopPropagation(); const rect = container.getBoundingClientRect(); setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop }); setBackgroundMenu(null); }} onContextMenu={(evt) => { evt.preventDefault(); evt.stopPropagation(); const rect = container.getBoundingClientRect(); setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop }); setBackgroundMenu(null); }} />
                         <path d={pathString} fill="none" stroke={isSelected ? "#0a84ff" : "rgba(128,128,128,0.4)"} strokeWidth="2" strokeLinecap="round" strokeDasharray={conn.style === 'dashed' ? "8,4" : "none"} className="transition-all duration-300 pointer-events-none group-hover/line:stroke-blue-400 group-hover/line:stroke-[3px]" />
                         <circle cx={startX} cy={startY} r="3" fill="rgba(128,128,128,0.5)" className="pointer-events-none group-hover/line:fill-blue-400" />
-                        <path d={`M ${endX} ${endY} L ${endX - 8} ${endY - 4} L ${endX - 8} ${endY + 4} Z`} fill="rgba(128,128,128,0.5)" className="pointer-events-none group-hover/line:fill-blue-400" />
+                        <path d={arrowPath} fill="rgba(128,128,128,0.5)" className="pointer-events-none group-hover/line:fill-blue-400" />
                     </g>
                 );
             }
         });
+
+        // 드래그 중인 연결선 (draft)
         if (connectionDraft) {
-            const dist = Math.abs(connectionDraft.currX - connectionDraft.startX);
-            const cp1x = connectionDraft.startX + dist * 0.5;
-            const cp2x = connectionDraft.currX - dist * 0.5;
-            const pathString = `M ${connectionDraft.startX} ${connectionDraft.startY} C ${cp1x} ${connectionDraft.startY}, ${cp2x} ${connectionDraft.currY}, ${connectionDraft.currX} ${connectionDraft.currY}`;
-            newLines.push(<g key="draft"><path d={pathString} fill="none" stroke="#0a84ff" strokeWidth="2" strokeDasharray="5,5" strokeLinecap="round" /><circle cx={connectionDraft.currX} cy={connectionDraft.currY} r="4" fill="#0a84ff" /></g>);
+            const pathString = getBezierPath(
+                connectionDraft.startX,
+                connectionDraft.startY,
+                connectionDraft.currX,
+                connectionDraft.currY,
+                connectionDraft.sourceHandle,
+                'left' // 드래그 중에는 기본값 left
+            );
+            newLines.push(
+                <g key="draft">
+                    <path d={pathString} fill="none" stroke="#0a84ff" strokeWidth="2" strokeDasharray="5,5" strokeLinecap="round" />
+                    <circle cx={connectionDraft.currX} cy={connectionDraft.currY} r="4" fill="#0a84ff" />
+                </g>
+            );
         }
+
         setLines(newLines);
-    }, [connections, connectionDraft, activeMenu]);
+    }, [connections, connectionDraft, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath]);
 
     useLayoutEffect(() => {
         updateConnections();
@@ -717,7 +798,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerUp}
             >
-                <svg className="absolute top-0 left-0 pointer-events-none z-0" style={{ width: Math.max(svgSize.width, 2000), height: Math.max(svgSize.height, 2000) }}>{lines}</svg>
+                <svg className="absolute top-0 left-0 pointer-events-none z-[15]" style={{ width: Math.max(svgSize.width, 2000), height: Math.max(svgSize.height, 2000) }}>{lines}</svg>
 
                 {/* ✅ 그룹 렌더링 - SortableGroup 사용 */}
                 {groups.map(group => {

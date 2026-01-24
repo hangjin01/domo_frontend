@@ -488,6 +488,7 @@ export async function acceptInvitation(token: string): Promise<{ message: string
 
 /**
  * 프로젝트 멤버 조회 (= 워크스페이스 멤버와 동일)
+ * 프로젝트가 속한 워크스페이스의 멤버를 반환합니다.
  */
 export async function getProjectMembers(projectId: number): Promise<User[]> {
   if (API_CONFIG.USE_MOCK) {
@@ -496,7 +497,27 @@ export async function getProjectMembers(projectId: number): Promise<User[]> {
   }
 
   // 프로젝트 → 워크스페이스 → 멤버 조회
-  // 백엔드에 직접 API가 없으므로 프로젝트 정보에서 workspace_id를 가져와야 함
-  // 간단하게 온라인 멤버 반환
-  return MOCK_ONLINE_MEMBERS;
+  // 1. 먼저 프로젝트 정보를 가져와서 workspace_id 확인
+  try {
+    const project = await getProject(projectId);
+    if (!project.workspace_id) {
+      console.warn('프로젝트에 workspace_id가 없습니다.');
+      return [];
+    }
+
+    // 2. 워크스페이스 멤버 조회
+    const members = await getWorkspaceMembers(project.workspace_id);
+
+    // 3. Member 타입을 User 타입으로 변환
+    return members.map(member => ({
+      id: member.id,
+      email: member.email,
+      name: member.name,
+      is_student_verified: true, // 기본값
+      profile_image: member.avatar || undefined,
+    }));
+  } catch (error) {
+    console.error('프로젝트 멤버 조회 실패:', error);
+    return [];
+  }
 }
