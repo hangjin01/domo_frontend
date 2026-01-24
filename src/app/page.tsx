@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { LoginScreen } from "./components/LoginScreen";
-import { SignupScreen } from "./components/SignupScreen";
-import { VerifyEmailScreen } from "./components/VerifyEmailScreen";
-import { VerifySuccessScreen } from "./components/VerifySuccessScreen";
-import { WorkspaceListScreen, WorkspaceHomeScreen } from "./components/workspace";
-import { WorkspaceBoard } from "./components/board/WorkspaceBoard";
-import type { Project, AuthUser, Workspace } from "../types/index";
+import {
+    LoginScreen,
+    SignupScreen,
+    VerifyEmailScreen,
+    VerifySuccessScreen,
+    WorkspaceListScreen,
+    ProjectSelectScreen,
+    BoardScreen,
+} from "@/src/containers/screens";
+import type { Project, AuthUser, Workspace } from "@/src/models/types";
 
 type AuthScreen = 'login' | 'signup' | 'verify' | 'verify-success';
 
@@ -121,10 +124,10 @@ export default function Home() {
         );
     }
 
-    // 3. 워크스페이스 선택됨, 프로젝트 미선택 → 워크스페이스 홈 (프로젝트 목록)
+    // 3. 워크스페이스 선택됨, 프로젝트 미선택 → 프로젝트 선택 화면
     if (!selectedProject) {
         return (
-            <WorkspaceHomeScreen
+            <ProjectSelectScreen
                 workspace={selectedWorkspace}
                 user={user}
                 onSelectProject={handleSelectProject}
@@ -134,10 +137,10 @@ export default function Home() {
         );
     }
 
-    // 4. 프로젝트 선택됨 → 워크스페이스 보드
+    // 4. 프로젝트 선택됨 → 보드 화면
     return (
         <div className="h-screen w-full overflow-hidden">
-            <WorkspaceBoard
+            <BoardScreen
                 project={selectedProject}
                 onBack={handleBackToProjects}
             />
