@@ -106,7 +106,6 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
                 {/* 접기/펼치기 버튼 */}
                 <button
                     onClick={() => {
-                        console.log('🔘 Collapse button clicked:', { groupId: group.id, currentCollapsed: group.collapsed, newCollapsed: !group.collapsed });
                         onCollapse?.(group.id, !group.collapsed);
                     }}
                     className="p-1 hover:bg-white/50 dark:hover:bg-white/10 rounded-lg transition-colors"

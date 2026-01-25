@@ -21,7 +21,7 @@ interface BoardCanvasProps {
     onTaskUpdate?: (taskId: number, updates: Partial<Task>) => Promise<void>;
     onTaskDelete?: (taskId: number) => Promise<void>;
     onMoveTaskToColumn?: (taskId: number, columnId: number) => Promise<void>;
-    // ✅ [수정] handle 정보 추가
+    // [수정] handle 정보 추가
     onConnectionCreate: (from: number, to: number, sourceHandle?: 'left' | 'right', targetHandle?: 'left' | 'right') => void;
     onConnectionDelete: (id: number) => void;
     onConnectionUpdate: (id: number, updates: Partial<Connection>) => void | Promise<void>;
@@ -144,7 +144,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     const CARD_DRAG_THRESHOLD = 8; // 8px 이상 이동해야 드래그 시작
 
-    // ✅ useSortableGrid 훅 사용 - 그룹 내 카드 정렬용
+    // useSortableGrid 훅 사용 - 그룹 내 카드 정렬용
     const {
         dragContext,
         dropPreview,
@@ -557,7 +557,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 onTasksUpdate(tasks.filter(t => t.id !== tempTask.id).concat(savedTask));
                 onTaskSelect(savedTask);
             } catch (err) {
-                console.error('Failed to create task:', err);
+                
                 onTasksUpdate(tasks.filter(t => t.id !== tempTask.id));
             } finally {
                 setIsCreatingTask(false);
@@ -576,7 +576,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         try {
             await onTaskUpdate(taskId, updates);
         } catch (err) {
-            console.error('Failed to save position:', err);
+            
         } finally {
             setIsSavingPosition(false);
         }
@@ -592,7 +592,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             if (onTaskDelete) await onTaskDelete(taskId);
             else await deleteTask(taskId);
         } catch (err) {
-            console.error('Failed to delete task:', err);
+            
             onTasksUpdate(previousTasks);
             alert('카드 삭제에 실패했습니다.');
         } finally {
@@ -617,11 +617,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     if (onTaskDelete) await onTaskDelete(id);
                     else await deleteTask(id);
                 } catch (err) {
-                    console.warn(`Failed to delete task ${id}:`, err);
+                    
                 }
             }));
         } catch (err) {
-            console.error('Failed to delete tasks:', err);
+            
             onTasksUpdate(previousTasks);
         } finally {
             setIsDeletingTask(false);
@@ -629,7 +629,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
     };
 
-    // ✅ 카드 드래그 시작 핸들러 (그룹 내 카드용 - SortableGrid 사용)
+    // 카드 드래그 시작 핸들러 (그룹 내 카드용 - SortableGrid 사용)
     const handleSortableCardDragStart = useCallback((taskId: number, e: React.PointerEvent) => {
         // 우클릭은 무시 (팬 전용)
         if (e.button === 2) return;
@@ -727,7 +727,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
 
         if (task) {
-            // ✅ 그룹에 속한 카드면 SortableGrid 사용
+            // 그룹에 속한 카드면 SortableGrid 사용
             if (task.column_id && groups.some(g => g.id === task.column_id)) {
                 handleSortableCardDragStart(task.id, e);
                 e.stopPropagation();
@@ -843,7 +843,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 });
             }
         } catch (err) {
-            console.error('Failed to update connection:', err);
+            
         }
 
         setConnectionReconnect(null);
@@ -892,7 +892,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             return;
         }
 
-        // ✅ SortableGrid 드래그 중
+        // SortableGrid 드래그 중
         if (dragContext) {
             const newPos = updateDrag(e.clientX, e.clientY, container.scrollLeft - rect.left, container.scrollTop - rect.top);
             setSortableDragPos(newPos);
@@ -990,7 +990,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             return;
         }
 
-        // ✅ SortableGrid 드래그 종료 - 현재 드래그 위치 전달
+        // SortableGrid 드래그 종료 - 현재 드래그 위치 전달
         if (dragContext) {
             await endDrag(sortableDragPos ?? undefined);
             setSortableDragPos(null);
@@ -1001,7 +1001,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (freeDragState) {
             const task = tasks.find(t => t.id === freeDragState.id);
             if (task && (task.x !== freeDragState.initialTaskX || task.y !== freeDragState.initialTaskY) && task.x !== undefined && task.y !== undefined) {
-                // ✅ 자유 배치 카드가 그룹 안에 드롭되면 column_id 설정
+                // 자유 배치 카드가 그룹 안에 드롭되면 column_id 설정
                 const targetGroup = groups.find(g => {
                     const cardCenterX = task.x + 140; // 카드 중심점
                     const cardCenterY = task.y + 60;
@@ -1031,7 +1031,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (groupDragState) {
             const draggedGroup = groups.find(g => g.id === groupDragState.id);
             if (draggedGroup) {
-                // ✅ 그룹이 다른 그룹 안에 드롭되면 parent_id 설정
+                // 그룹이 다른 그룹 안에 드롭되면 parent_id 설정
                 // 단, 자신의 자식 그룹 안에는 들어갈 수 없음 (순환 참조 방지)
                 const isDescendant = (parentId: number | null | undefined, targetId: number): boolean => {
                     let current = parentId;
@@ -1067,7 +1067,6 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         }
                         return g;
                     }));
-                    console.log(`Group ${groupDragState.id} nested into Group ${targetGroup.id}`);
                 } else {
                     // 그룹 밖으로 이동 - parent_id를 null로
                     if (draggedGroup.parentId) {
@@ -1125,9 +1124,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     // 그룹 접기/펴기 핸들러
     const handleGroupCollapse = useCallback((groupId: number, collapsed: boolean) => {
-        console.log('📦 handleGroupCollapse called:', { groupId, collapsed });
         const updatedGroups = groups.map(g => g.id === groupId ? { ...g, collapsed } : g);
-        console.log('📦 Updated groups:', updatedGroups.map(g => ({ id: g.id, collapsed: g.collapsed })));
         onGroupsUpdate(updatedGroups);
     }, [groups, onGroupsUpdate]);
 
@@ -1279,7 +1276,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                                         column_id: targetColumn.id
                                                     });
                                                 } catch (err) {
-                                                    console.error('Failed to update task status:', err);
+                                                    
                                                 }
                                             }
                                         }}
@@ -1289,7 +1286,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         });
                 })}
 
-                {/* ✅ 드래그 중인 카드 (절대 위치로 렌더링) */}
+                {/* 드래그 중인 카드 (절대 위치로 렌더링) */}
                 {dragContext && sortableDragPos && (
                     <div
                         className="absolute z-50 pointer-events-none"
@@ -1359,7 +1356,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                         column_id: targetColumn.id
                                     });
                                 } catch (err) {
-                                    console.error('Failed to update task status:', err);
+                                    
                                 }
                             }
                         }}
