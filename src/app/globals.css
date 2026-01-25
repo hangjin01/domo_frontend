@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* Apple-style Light Mode */
   --bg-primary: #f5f5f7;
@@ -58,9 +60,17 @@
 }
 
 @theme inline {
-  --color-background: var(--bg-primary);
-  --color-foreground: var(--text-primary);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  /* DOMO Custom Colors */
+  --color-domo-bg: #0F111A;
+  --color-domo-card: #1E212B;
+  --color-domo-accent: #8D6E63;
+  --color-domo-primary: #8D6E63;
+  --color-domo-primary-hover: #6D4C41;
+  --color-domo-primary-light: #D7CCC8;
+  --color-domo-highlight: #E879F9;
+  
+  /* Font */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
 }
 
 body {
