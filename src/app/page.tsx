@@ -46,11 +46,7 @@ export default function Home() {
     };
 
     const handleResendCode = async () => {
-        try {
-            console.log('인증 코드 재전송 요청:', pendingEmail);
-        } catch (err) {
-            console.error('재전송 실패:', err);
-        }
+        // 인증 코드 재전송 로직 (API 구현 시 추가)
     };
 
     // === 워크스페이스/프로젝트 핸들러 ===
