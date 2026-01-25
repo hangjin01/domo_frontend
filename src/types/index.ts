@@ -8,6 +8,7 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  nickname?: string;
   is_student_verified?: boolean;
   profile_image?: string | null;
 }
@@ -69,7 +70,7 @@ export interface Workspace {
 // 3. 보드 / 태스크 / 노드 (프론트엔드용)
 // ============================================
 
-export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings';
+export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings' | 'community';
 
 export type TaskStatus = 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done';
 
@@ -327,4 +328,52 @@ export interface VoiceChatState {
   isMuted: boolean;
   isDeafened: boolean;
   activePeerIds: number[];
+}
+
+// ============================================
+// 9. 게시판 (Community Board)
+// ============================================
+
+export interface PostComment {
+  id: number;
+  post_id: number;
+  user_id: number;
+  content: string;
+  created_at: string;
+
+  // Join된 데이터 (선택적)
+  user?: User;
+}
+
+export interface Post {
+  id: number;
+  project_id?: number;
+  user_id: number;
+  title: string;
+  content: string;
+  image_url?: string;
+  created_at: string;
+  updated_at?: string;
+
+  // Join된 데이터 (선택적)
+  user?: User; // 백엔드에서 user 객체를 통째로 안 줄 수도 있음
+  user_name?: string; // 백엔드에서 user_name 포맷으로 줄 때 사용
+  comments?: PostComment[];
+}
+
+// API 요청/응답 타입
+export interface PostCreateRequest {
+  title: string;
+  content: string;
+  file?: File;
+}
+
+export interface PostUpdateRequest {
+  title?: string;
+  content?: string;
+  image_url?: string;
+}
+
+export interface PostCommentCreateRequest {
+  content: string;
 }

@@ -8,6 +8,7 @@ import { CalendarView, TimelineView, SettingsView } from './Views';
 import { TaskDetailModal } from '../ui/TaskDetailModal';
 import { Mascot } from '../ui/Mascot';
 import { Dock } from '../dock/Dock';
+import { CommunityBoard } from '../community/CommunityBoard';
 import { MOCK_MEMBERS } from '@/src/lib/api/mock-data';
 
 import {
@@ -24,7 +25,7 @@ import {
 
 import {
     Trello, Calendar as CalendarIcon, StretchHorizontal, Settings,
-    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle
+    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare
 } from 'lucide-react';
 
 interface WorkspaceBoardProps {
@@ -679,6 +680,13 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                             <StretchHorizontal size={20} strokeWidth={viewMode === 'timeline' ? 2.5 : 2} />
                             {sidebarOpen && <span className="font-medium">Timeline</span>}
                         </button>
+                        <button
+                            onClick={() => setViewMode('community')}
+                            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 ${viewMode === 'community' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                        >
+                            <MessageSquare size={20} strokeWidth={viewMode === 'community' ? 2.5 : 2} />
+                            {sidebarOpen && <span className="font-medium">Community</span>}
+                        </button>
                     </div>
 
                     <div className="p-4 mt-auto">
@@ -734,6 +742,7 @@ export const WorkspaceBoard: React.FC<WorkspaceBoardProps> = ({ project, onBack 
                     )}
                     {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={handleTaskSelect} />}
                     {viewMode === 'timeline' && <TimelineView tasks={tasks} onTaskSelect={handleTaskSelect} />}
+                    {viewMode === 'community' && <CommunityBoard projectId={project.id} viewType="table" />}
                     {viewMode === 'settings' && <SettingsView />}
                 </div>
             </div>

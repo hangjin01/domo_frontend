@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   description: 'A minimal, dark-mode productivity workspace.',
 };
 
+import { UserProvider } from '@/src/lib/contexts/UserContext';
+
 export default function RootLayout({
   children,
 }: {
@@ -26,6 +28,7 @@ export default function RootLayout({
                   extend: {
                     fontFamily: {
                       sans: ['Inter', 'sans-serif'],
+                      mono: ['JetBrains Mono', 'monospace'],
                     },
                     colors: {
                       domo: {
@@ -55,7 +58,8 @@ export default function RootLayout({
             `,
           }}
         />
-        <style dangerouslySetInnerHTML={{ __html: `
+        <style dangerouslySetInnerHTML={{
+          __html: `
           ::-webkit-scrollbar { width: 6px; height: 6px; }
           ::-webkit-scrollbar-track { background: transparent; }
           ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
@@ -65,7 +69,9 @@ export default function RootLayout({
         `}} />
       </head>
       <body className="bg-white dark:bg-domo-bg text-gray-800 dark:text-gray-200 antialiased overflow-hidden">
-        {children}
+        <UserProvider>
+          {children}
+        </UserProvider>
       </body>
     </html>
   );

@@ -2,6 +2,9 @@ import type { User } from '../../types';
 import { API_CONFIG, apiFetch, apiUpload, mockDelay } from './config';
 import { MOCK_CURRENT_USER } from './mock-data';
 
+// 메모리 상에서 변경사항 유지 (Mock 모드용)
+let currentMockUser = { ...MOCK_CURRENT_USER };
+
 // ============================================
 // 사용자 API
 // ============================================
@@ -12,7 +15,7 @@ import { MOCK_CURRENT_USER } from './mock-data';
 export async function getMyInfo(): Promise<User> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return MOCK_CURRENT_USER;
+    return currentMockUser;
   }
 
   // 백엔드: GET /api/users/me
@@ -20,6 +23,7 @@ export async function getMyInfo(): Promise<User> {
     id: number;
     email: string;
     name: string;
+    nickname?: string;
     is_student_verified: boolean;
     profile_image?: string;
   }>('/users/me');
@@ -28,6 +32,7 @@ export async function getMyInfo(): Promise<User> {
     id: response.id,
     email: response.email,
     name: response.name,
+    nickname: response.nickname,
     is_student_verified: response.is_student_verified,
     profile_image: response.profile_image,
   };
@@ -36,10 +41,11 @@ export async function getMyInfo(): Promise<User> {
 /**
  * 사용자 이름 수정
  */
-export async function updateMyInfo(data: { name?: string }): Promise<User> {
+export async function updateMyInfo(data: { name?: string; nickname?: string }): Promise<User> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return { ...MOCK_CURRENT_USER, ...data };
+    currentMockUser = { ...currentMockUser, ...data };
+    return currentMockUser;
   }
 
   // 백엔드: PATCH /api/users/me
@@ -47,6 +53,7 @@ export async function updateMyInfo(data: { name?: string }): Promise<User> {
     id: number;
     email: string;
     name: string;
+    nickname?: string;
     is_student_verified: boolean;
     profile_image?: string;
   }>('/users/me', {
@@ -58,6 +65,7 @@ export async function updateMyInfo(data: { name?: string }): Promise<User> {
     id: response.id,
     email: response.email,
     name: response.name,
+    nickname: response.nickname,
     is_student_verified: response.is_student_verified,
     profile_image: response.profile_image,
   };
@@ -69,10 +77,11 @@ export async function updateMyInfo(data: { name?: string }): Promise<User> {
 export async function updateProfileImage(file: File): Promise<User> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(500);
-    return {
-      ...MOCK_CURRENT_USER,
+    currentMockUser = {
+      ...currentMockUser,
       profile_image: URL.createObjectURL(file),
     };
+    return currentMockUser;
   }
 
   // 백엔드: PATCH /api/users/me/profile-image (multipart/form-data)
@@ -83,6 +92,7 @@ export async function updateProfileImage(file: File): Promise<User> {
     id: number;
     email: string;
     name: string;
+    nickname?: string;
     is_student_verified: boolean;
     profile_image?: string;
   }>('/users/me/profile-image', formData, { method: 'PATCH' });
@@ -91,6 +101,7 @@ export async function updateProfileImage(file: File): Promise<User> {
     id: response.id,
     email: response.email,
     name: response.name,
+    nickname: response.nickname,
     is_student_verified: response.is_student_verified,
     profile_image: response.profile_image,
   };

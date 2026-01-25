@@ -74,6 +74,24 @@ export {
   deleteNode,
 } from './board';
 
+// 게시판 API (신규)
+export {
+  getProjectPosts,
+  getCommunityPosts,
+  createProjectPost,
+  createCommunityPost,
+  getProjectPost,
+  getCommunityPost,
+  updateCommunityPost,
+  updateProjectPost,
+  deleteCommunityPost,
+  deleteProjectPost,
+  createCommunityComment,
+  createProjectComment,
+  deleteCommunityComment,
+  deleteProjectComment,
+} from './post';
+
 // 파일 API
 export {
   uploadFile,

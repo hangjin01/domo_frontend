@@ -4,7 +4,9 @@ import React, { useState, useRef } from 'react';
 import { Task } from '../../../types';
 import { getStickyStyle } from '../../../lib/utils/canvas';
 import { logout } from '../../../lib/api';
+import { getImageUrl } from '../../../lib/utils/image';
 import { updateProfileImage, updateMyInfo } from '../../../lib/api/user';
+import { useUser } from '@/src/lib/contexts/UserContext';
 import {
   Settings, Sun, Moon, Bell, Shield, ChevronRight, Mail, LogOut, StretchHorizontal, ChevronLeft, User, Clock, MoreVertical, ChevronDown, Camera, Loader2
 } from 'lucide-react';
@@ -12,37 +14,54 @@ import {
 interface SettingsViewProps {
   initialTab?: 'profile' | 'preferences';
   onLogout?: () => void;
-  user?: {
-    name: string;
-    email: string;
-    profile_image?: string | null;
-  };
+  // user prop is no longer needed as we use UserContext
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profile', onLogout, user }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profile', onLogout }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences'>(initialTab);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Use Global User Context
+  const { user, refreshUser } = useUser();
 
   React.useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
-  const [profileImage, setProfileImage] = useState<string | null>(user?.profile_image || null);
-  const [userName, setUserName] = useState(user?.name || 'User Name');
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [userName, setUserName] = useState('User Name');
+  const [userNickname, setUserNickname] = useState('User');
+
   const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingNickname, setIsEditingNickname] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync state with global user context
+  React.useEffect(() => {
+    if (user) {
+      setUserName(user.name);
+      setUserNickname(user.nickname || 'User');
+      setProfileImage(getImageUrl(user.profile_image) || null);
+    }
+  }, [user]);
+
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // 로컬 미리보기 (즉시 반응)
       const imageUrl = URL.createObjectURL(file);
-      setProfileImage(imageUrl); // Optimistic update
+      setProfileImage(imageUrl);
 
       try {
         await updateProfileImage(file);
+        refreshUser(); // Global context refresh
       } catch (error) {
         console.error('Failed to update profile image:', error);
         alert('이미지 업로드에 실패했습니다.');
+        // 실패 시 원래 이미지로 복구
+        setProfileImage(getImageUrl(user?.profile_image) || null);
       }
     }
   };
@@ -51,9 +70,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profil
     try {
       await updateMyInfo({ name: userName });
       setIsEditingName(false);
+      refreshUser(); // Global context refresh
     } catch (error) {
       console.error('Failed to update name:', error);
       alert('이름 수정에 실패했습니다.');
+    }
+  };
+
+  // 닉네임 저장 핸들러
+  const handleSaveNickname = async () => {
+    try {
+      await updateMyInfo({ nickname: userNickname });
+      setIsEditingNickname(false);
+      refreshUser(); // Global context refresh
+    } catch (error) {
+      console.error('Failed to update nickname:', error);
+      alert('닉네임 수정에 실패했습니다.');
     }
   };
 
@@ -125,7 +157,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profil
                     <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
                     <>
-                      {userName.slice(0, 2).toUpperCase()}
+                      {userNickname ? userNickname.slice(0, 2).toUpperCase() : userName.slice(0, 2).toUpperCase()}
                       <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Camera size={32} className="text-white" />
                       </div>
@@ -141,22 +173,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profil
                 />
 
                 <div className="w-full">
+                  {/* 닉네임 편집 영역 (기존 이름 자리) */}
                   <div className="flex items-center justify-between mb-2 h-10">
-                    {isEditingName ? (
+                    {isEditingNickname ? (
                       <div className="flex items-center gap-2 w-full animate-in fade-in duration-200">
                         <input
                           type="text"
-                          value={userName}
-                          onChange={(e) => setUserName(e.target.value)}
+                          value={userNickname}
+                          placeholder="닉네임 입력"
+                          onChange={(e) => setUserNickname(e.target.value)}
                           className="flex-1 bg-gray-50 dark:bg-black/20 border border-blue-500 rounded-lg px-3 py-1 text-lg font-bold text-gray-900 dark:text-white focus:outline-none"
                           autoFocus
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveName();
-                            if (e.key === 'Escape') setIsEditingName(false);
+                            if (e.key === 'Enter') handleSaveNickname();
+                            if (e.key === 'Escape') setIsEditingNickname(false);
                           }}
                         />
                         <button
-                          onClick={handleSaveName}
+                          onClick={handleSaveNickname}
                           className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shadow-md shadow-blue-500/20"
                         >
                           저장
@@ -164,9 +198,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profil
                       </div>
                     ) : (
                       <>
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white truncate pr-4">{userName}</h2>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white truncate pr-4">
+                          {userNickname || '닉네임 없음'}
+                        </h2>
                         <button
-                          onClick={() => setIsEditingName(true)}
+                          onClick={() => setIsEditingNickname(true)}
                           className="text-sm font-bold text-blue-500 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap"
                         >
                           편집
@@ -180,10 +216,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profil
                     <span>온라인</span>
                   </div>
 
-                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-6">
-                    <Clock size={16} />
-                    <span>현지 시간 오후 7:35</span>
-                  </div>
+
 
                   <div className="flex gap-2">
                     <button className="flex-1 py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -205,9 +238,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profil
               {/* Contact Info */}
               <div className="p-6 border-b border-gray-100 dark:border-gray-800">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-gray-900 dark:text-white">연락처 정보</h3>
-                  <button className="text-sm font-bold text-blue-500 hover:text-blue-600 dark:hover:text-blue-400">편집</button>
+                  <h3 className="font-bold text-gray-900 dark:text-white">내 정보</h3>
                 </div>
+
+                {/* 이름 (편집 가능) */}
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    <User size={20} className="text-gray-500" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold text-gray-500 mb-0.5">이름</div>
+                    {isEditingName ? (
+                      <div className="flex items-center gap-2 w-full animate-in fade-in duration-200">
+                        <input
+                          type="text"
+                          value={userName}
+                          onChange={(e) => setUserName(e.target.value)}
+                          className="flex-1 bg-gray-50 dark:bg-black/20 border border-blue-500 rounded px-2 py-0.5 text-sm  text-gray-900 dark:text-white focus:outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveName();
+                            if (e.key === 'Escape') setIsEditingName(false);
+                          }}
+                        />
+                        <button
+                          onClick={handleSaveName}
+                          className="px-2 py-0.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded transition-colors whitespace-nowrap"
+                        >
+                          저장
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between group">
+                        <div className="text-gray-900 dark:text-white text-sm font-medium">{userName}</div>
+                        <button onClick={() => setIsEditingName(true)} className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">수정</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="flex items-start gap-4 mb-4">
                   <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
                     <Mail size={20} className="text-gray-500" />
