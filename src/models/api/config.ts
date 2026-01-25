@@ -3,11 +3,10 @@
 // ============================================
 
 export const API_CONFIG = {
-  // REST API: 프록시 경유
   BASE_URL: '/api' as string,
 
-  // SSE/WebSocket: 개발환경에서 Next.js proxy 버퍼링 문제로 직접 연결 필요
-  REALTIME_URL: (process.env.NEXT_PUBLIC_API_URL || '/api') as string,
+  // SSE/WebSocket: 환경변수에서 직접 참조
+  REALTIME_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000',
 
   USE_MOCK: process.env.NEXT_PUBLIC_USE_MOCK === 'true',
 } as const;

@@ -340,21 +340,21 @@ export let MOCK_ACTIVITIES: ActivityLog[] = [
   {
     id: 1,
     user_id: 1,
-    content: '📋 새로운 프로젝트 "Domo 협업 플랫폼"을 생성했습니다.',
+    content: '새로운 프로젝트 "Domo 협업 플랫폼"을 생성했습니다.',
     action_type: 'CREATE',
     created_at: new Date().toISOString(),
   },
   {
     id: 2,
     user_id: 1,
-    content: '📝 "기획서 작성" 카드의 상태를 완료로 변경했습니다.',
+    content: '"기획서 작성" 카드의 상태를 완료로 변경했습니다.',
     action_type: 'UPDATE',
     created_at: new Date(Date.now() - 3600000).toISOString(),
   },
   {
     id: 3,
     user_id: 1,
-    content: '💾 "UI 가이드라인.pdf" 파일을 업로드했습니다.',
+    content: '"UI 가이드라인.pdf" 파일을 업로드했습니다.',
     action_type: 'UPLOAD',
     created_at: new Date(Date.now() - 86400000).toISOString(),
   },
@@ -390,7 +390,6 @@ export function addMockTask(task: Task): Task {
 export function updateMockTask(taskId: number, updates: Partial<Task>): Task | null {
   const index = MOCK_TASKS.findIndex(t => t.id === taskId);
   if (index === -1) {
-    console.warn('[Mock] Task not found for update:', taskId);
     return null;
   }
   
@@ -509,7 +508,6 @@ export function addMockGroup(group: Partial<Group>): Group {
 export function updateMockGroup(groupId: number, updates: Partial<Group>): Group | null {
   const index = MOCK_GROUPS.findIndex(g => g.id === groupId);
   if (index === -1) {
-    console.warn('[Mock] Group not found for update:', groupId);
     return null;
   }
   

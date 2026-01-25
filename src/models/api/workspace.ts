@@ -428,12 +428,12 @@ export function subscribeOnlineMembers(
       }));
       onUpdate(members);
     } catch (err) {
-      console.error('SSE 파싱 에러:', err);
+      // SSE parsing error
     }
   };
 
   eventSource.onerror = (error) => {
-    console.error('SSE 연결 에러:', error);
+    onError?.(error);
     onError?.(error);
   };
 
@@ -536,7 +536,6 @@ export async function getProjectMembers(projectId: number): Promise<User[]> {
   try {
     const project = await getProject(projectId);
     if (!project.workspace_id) {
-      console.warn('프로젝트에 workspace_id가 없습니다.');
       return [];
     }
 
@@ -552,7 +551,7 @@ export async function getProjectMembers(projectId: number): Promise<User[]> {
       profile_image: member.avatar || undefined,
     }));
   } catch (error) {
-    console.error('프로젝트 멤버 조회 실패:', error);
+    
     return [];
   }
 }

@@ -26,14 +26,14 @@ export async function getMyActivities(): Promise<ActivityLog[]> {
       {
         id: 1,
         user_id: 1,
-        content: '📋 새로운 카드를 생성했습니다.',
+        content: '새로운 카드를 생성했습니다.',
         action_type: 'CREATE',
         created_at: new Date().toISOString(),
       },
       {
         id: 2,
         user_id: 1,
-        content: '💾 파일을 업로드했습니다.',
+        content: '파일을 업로드했습니다.',
         action_type: 'UPLOAD',
         created_at: new Date(Date.now() - 3600000).toISOString(),
       },
@@ -54,7 +54,7 @@ export async function getWorkspaceActivities(workspaceId: number): Promise<Activ
       {
         id: 1,
         user_id: 1,
-        content: '👥 새로운 멤버가 참여했습니다.',
+        content: '새로운 멤버가 참여했습니다.',
         action_type: 'JOIN',
         created_at: new Date().toISOString(),
       },

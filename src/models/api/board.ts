@@ -425,7 +425,7 @@ export async function updateGroup(
   if (updates.width !== undefined) payload.width = updates.width;
   if (updates.height !== undefined) payload.height = updates.height;
 
-  // ✅ parentId는 null을 명시적으로 전송해야 함 (최상위 그룹으로 분리할 때)
+  // parentId는 null을 명시적으로 전송해야 함 (최상위 그룹으로 분리할 때)
   if ('parentId' in updates) {
     payload.parentId = updates.parentId ?? null; // undefined는 null로 변환
   }
@@ -696,7 +696,7 @@ export async function updateTask(
   if (updates.x !== undefined) payload.x = updates.x;
   if (updates.y !== undefined) payload.y = updates.y;
 
-  // ✅ column_id는 null을 명시적으로 전송해야 함 (그룹에서 분리할 때)
+  // column_id는 null을 명시적으로 전송해야 함 (그룹에서 분리할 때)
   // updates 객체에 column_id 키가 있으면 (undefined가 아닌 값으로 설정되었으면) 전송
   if ('column_id' in updates) {
     payload.column_id = updates.column_id ?? null; // undefined는 null로 변환
@@ -975,7 +975,6 @@ export async function getBoardMembers(projectId: number): Promise<Member[]> {
     const project = allProjects.find(p => p.id === projectId);
 
     if (!project?.workspace_id) {
-      console.warn('프로젝트의 workspace_id를 찾을 수 없습니다.');
       return MOCK_MEMBERS;
     }
 
@@ -983,7 +982,7 @@ export async function getBoardMembers(projectId: number): Promise<Member[]> {
     const members = await getWorkspaceMembers(project.workspace_id);
     return members;
   } catch (error) {
-    console.error('보드 멤버 조회 실패:', error);
+    
     return MOCK_MEMBERS;
   }
 }
@@ -1008,7 +1007,6 @@ export async function getEditingCards(projectId: number): Promise<EditingCard[]>
     return await apiFetch<EditingCard[]>(`/projects/${projectId}/editing-cards`);
   } catch (error) {
     // 백엔드 API가 없으면 빈 배열 반환 (기능 비활성화)
-    console.warn('[getEditingCards] API not implemented, returning empty array');
     return [];
   }
 }
@@ -1029,7 +1027,6 @@ export async function startEditingCard(cardId: number): Promise<void> {
     });
   } catch (error) {
     // 백엔드 API가 없으면 무시
-    console.warn('[startEditingCard] API not implemented, ignoring');
   }
 }
 
@@ -1049,7 +1046,6 @@ export async function stopEditingCard(cardId: number): Promise<void> {
     });
   } catch (error) {
     // 백엔드 API가 없으면 무시
-    console.warn('[stopEditingCard] API not implemented, ignoring');
   }
 }
 

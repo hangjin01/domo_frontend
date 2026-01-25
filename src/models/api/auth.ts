@@ -91,24 +91,21 @@ export async function signup(
  * 이메일 인증
  */
 export async function verify(email: string, code: string): Promise<VerifyResponse> {
-  // 1. 안전 장치: 이메일이 넘어오지 않았다면 요청 전에 에러 발생시키기 (디버깅용)
+  // 안전 장치: 이메일이 넘어오지 않았다면 요청 전에 에러 발생
   if (!email) {
-    console.error("🚨 verify 함수 호출 시 email 인자가 누락되었습니다!");
     throw new Error("이메일 정보가 없습니다.");
   }
 
-  // 2. Mock 모드일 때 (테스트용)
+  // Mock 모드
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(400);
-    // 테스트할 때 이메일 상관없이 코드만 맞으면 통과시키려면 아래 유지
     if (code === '123456') {
       return { message: '이메일 인증이 완료되었습니다.' };
     }
     throw new Error('인증 코드가 일치하지 않거나 만료되었습니다.');
   }
 
-  // 3. 실제 서버 통신 (핵심 수정 부분)
-  // 이제 body에 email과 code가 모두 담겨서 전송됩니다.
+  // 실제 서버 통신
   return apiFetch<VerifyResponse>('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({ email, code }),
