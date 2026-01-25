@@ -234,7 +234,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'profil
             <section>
               <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 px-1">앱 설정</h3>
               <div className="bg-white dark:bg-[#1E212B] rounded-xl border border-gray-200 dark:border-gray-700/50 overflow-hidden shadow-sm divide-y divide-gray-200 dark:divide-gray-700/50">
-                <div className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-[#2c333a] transition-colors cursor-pointer" onClick={() => document.documentElement.classList.toggle('dark')}>
+                <div className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-[#2c333a] transition-colors cursor-pointer" onClick={() => {
+                  const isDark = document.documentElement.classList.toggle('dark');
+                  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                }}>
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300">
                       <Sun size={18} className="hidden dark:block" />
