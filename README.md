@@ -11,6 +11,7 @@
 3. [Project Architecture](#3-project-architecture)
 4. [Key Features and Patterns](#4-key-features-and-patterns)
 5. [Convention](#5-convention)
+6. [Code Quality Status](#6-code-quality-status)
 
 ---
 
@@ -32,6 +33,16 @@ DOMO는 팀 협업을 위한 웹 기반 워크스페이스 플랫폼이다. 사�
 | **Icons** | Lucide React | 0.562.0 | 아이콘 라이브러리 |
 | **Backend** | FastAPI | - | Python 기반 REST API (별도 저장소) |
 | **Real-time** | WebSocket / WebRTC | - | 시그널링 및 P2P 음성 채팅 |
+
+### Project Stats
+
+| Metric | Value |
+|--------|-------|
+| 총 TypeScript 파일 | 64개 |
+| 총 코드 라인 | 16,258줄 |
+| containers/ | 13개 파일 |
+| views/ | 28개 파일 |
+| models/ | 19개 파일 |
 
 ---
 
@@ -95,6 +106,9 @@ npm start
 
 # 린트 검사
 npm run lint
+
+# 타입 검사
+npx tsc --noEmit
 ```
 
 ---
@@ -129,7 +143,39 @@ npm run lint
 └─────────────────────┘    └─────────────────────────────────┘
 ```
 
-### 3.2 Directory Structure
+### 3.2 Data Flow Chain
+
+```
+app/page.tsx
+    │
+    ├── [인증 전] LoginScreen / SignupScreen / VerifyEmailScreen
+    │
+    ├── [인증 후] WorkspaceListScreen
+    │       └── getWorkspaces() → models/api/workspace.ts
+    │
+    ├── [워크스페이스 선택] ProjectSelectScreen
+    │       └── getProjects() → models/api/workspace.ts
+    │
+    └── [프로젝트 선택] BoardScreen (920 lines)
+            │
+            ├── loadProjectData()
+            │   ├── getTasks() ──────────┐
+            │   ├── getConnections() ────┼── models/api/board.ts
+            │   └── getColumns() ────────┘
+            │
+            ├── handleTaskCreate/Update/Delete
+            │   └── createTask/updateTask/deleteTask → models/api/board.ts
+            │
+            └── BoardCanvas (1830 lines)
+                    │
+                    ├── usePendingSync (Optimistic UI)
+                    │   └── batchUpdateCardPositions → models/api/board.ts
+                    │
+                    └── useSortableGrid (Drag & Drop)
+                        └── calculateShiftTransitions / updateDrag / endDrag
+```
+
+### 3.3 Directory Structure
 
 ```
 src/
@@ -143,26 +189,26 @@ src/
 │   │   ├── BoardScreen.tsx       #     메인 보드 화면 (920 lines)
 │   │   ├── LoginScreen.tsx       #     로그인 화면
 │   │   ├── SignupScreen.tsx      #     회원가입 화면
-│   │   ├── ProjectSelectScreen.tsx    프로젝트 선택 화면
-│   │   ├── WorkspaceListScreen.tsx    워크스페이스 목록 화면
+│   │   ├── ProjectSelectScreen.tsx    프로젝트 선택 화면 (837 lines)
+│   │   ├── WorkspaceListScreen.tsx    워크스페이스 목록 화면 (421 lines)
 │   │   ├── VerifyEmailScreen.tsx #     이메일 인증 화면
 │   │   └── VerifySuccessScreen.tsx    인증 완료 화면
 │   │
 │   └── hooks/                    #   재사용 가능한 비즈니스 로직
 │       ├── common/               #     공통 Hooks
-│       │   ├── usePendingSync.ts #       Optimistic UI + Batch API (642 lines)
-│       │   └── useVoiceChat.ts   #       WebRTC 음성 채팅
+│       │   ├── usePendingSync.ts #       Optimistic UI + Batch API (641 lines)
+│       │   └── useVoiceChat.ts   #       WebRTC 음성 채팅 (313 lines)
 │       └── board/                #     보드 전용 Hooks
-│           └── useSortableGrid.ts#       드래그 앤 드롭 그리드 (588 lines)
+│           └── useSortableGrid.ts#       드래그 앤 드롭 그리드 (587 lines)
 │
 ├── views/                        # [UI Layer] 순수 프레젠테이션 컴포넌트
 │   ├── board/                    #   캔버스 보드 UI
-│   │   ├── BoardCanvas.tsx       #     메인 캔버스 (1831 lines)
-│   │   ├── SortableGroup.tsx     #     그룹 컴포넌트
+│   │   ├── BoardCanvas.tsx       #     메인 캔버스 (1830 lines)
+│   │   ├── SortableGroup.tsx     #     그룹 컴포넌트 (321 lines)
 │   │   └── SyncStatusIndicator.tsx    동기화 상태 표시기
 │   ├── task/                     #   태스크 관련 UI
-│   │   ├── TaskCard.tsx          #     태스크 카드
-│   │   └── TaskDetailModal.tsx   #     태스크 상세 모달
+│   │   ├── TaskCard.tsx          #     태스크 카드 (534 lines)
+│   │   └── TaskDetailModal.tsx   #     태스크 상세 모달 (609 lines)
 │   ├── calendar/                 #   캘린더 뷰
 │   │   └── CalendarView.tsx
 │   ├── timeline/                 #   타임라인 뷰
@@ -170,7 +216,7 @@ src/
 │   ├── profile/                  #   프로필/설정
 │   │   ├── ProfileCard.tsx
 │   │   ├── MyPageView.tsx
-│   │   ├── SettingsView.tsx
+│   │   ├── SettingsView.tsx      #     설정 화면 (312 lines)
 │   │   └── ActivityList.tsx
 │   ├── dock/                     #   하단 독바
 │   │   ├── Dock.tsx
@@ -179,36 +225,40 @@ src/
 │   ├── community/                #   커뮤니티 게시판
 │   │   ├── CommunityBoard.tsx
 │   │   ├── PostList.tsx
-│   │   ├── PostDetail.tsx
+│   │   ├── PostDetail.tsx        #     게시글 상세 (345 lines)
 │   │   └── PostWriter.tsx
 │   └── common/                   #   공통 UI 컴포넌트
 │       ├── Mascot.tsx            #     마스코트 애니메이션
 │       └── FileVersionDropdown.tsx    파일 버전 선택
 │
-└── models/                       # [Data Layer] 데이터 정의 및 API
-    ├── api/                      #   API 통신 함수
-    │   ├── config.ts             #     API 설정 (apiFetch wrapper)
-    │   ├── auth.ts               #     인증 API
-    │   ├── board.ts              #     보드/태스크/연결선 API
-    │   ├── workspace.ts          #     워크스페이스 API
-    │   ├── file.ts               #     파일 업로드 API
-    │   ├── user.ts               #     사용자 API
-    │   ├── post.ts               #     게시글 API
-    │   ├── activity.ts           #     활동 로그 API
-    │   ├── schedule.ts           #     일정 API
-    │   ├── mappers.ts            #     API 응답 변환기
-    │   └── mock-data.ts          #     개발용 Mock 데이터
-    ├── types/                    #   TypeScript 타입 정의
-    │   └── index.ts              #     모든 인터페이스/타입
-    ├── constants/                #   상수 정의
-    │   └── grid.ts               #     그리드 레이아웃 상수
-    └── utils/                    #   유틸리티 함수
-        ├── canvas.ts             #     캔버스 계산 유틸
-        ├── groupLayout.ts        #     그룹 레이아웃 계산
-        └── image.ts              #     이미지 처리 유틸
+├── models/                       # [Data Layer] 데이터 정의 및 API
+│   ├── api/                      #   API 통신 함수
+│   │   ├── config.ts             #     API 설정 (apiFetch wrapper)
+│   │   ├── auth.ts               #     인증 API
+│   │   ├── board.ts              #     보드/태스크/연결선 API (1155 lines)
+│   │   ├── workspace.ts          #     워크스페이스 API (568 lines)
+│   │   ├── file.ts               #     파일 업로드 API
+│   │   ├── user.ts               #     사용자 API
+│   │   ├── post.ts               #     게시글 API
+│   │   ├── activity.ts           #     활동 로그 API
+│   │   ├── schedule.ts           #     일정 API
+│   │   ├── mappers.ts            #     API 응답 변환기 (328 lines)
+│   │   └── mock-data.ts          #     개발용 Mock 데이터 (603 lines)
+│   ├── types/                    #   TypeScript 타입 정의
+│   │   └── index.ts              #     모든 인터페이스/타입 (433 lines)
+│   ├── constants/                #   상수 정의
+│   │   └── grid.ts               #     그리드 레이아웃 상수
+│   └── utils/                    #   유틸리티 함수
+│       ├── canvas.ts             #     캔버스 계산 유틸
+│       ├── groupLayout.ts        #     그룹 레이아웃 계산 (350 lines)
+│       └── image.ts              #     이미지 처리 유틸
+│
+└── lib/                          # [Legacy] 마이그레이션 대기 (향후 삭제 예정)
+    ├── api/mock-data.ts          #     → models/api/mock-data.ts로 이전 완료
+    └── contexts/UserContext.tsx  #     → 미사용 (삭제 예정)
 ```
 
-### 3.3 Layer Responsibilities
+### 3.4 Layer Responsibilities
 
 | Layer | Directory | Responsibility | Example |
 |-------|-----------|----------------|---------|
@@ -216,7 +266,7 @@ src/
 | **Containers** | `containers/` | 상태 관리, API 호출 조율, 이벤트 핸들링. Views와 Models 연결. | `BoardScreen.tsx`, `usePendingSync.ts` |
 | **Models** | `models/` | 데이터 구조 정의, API 통신, 순수 유틸리티 함수. UI 로직 금지. | `api/board.ts`, `types/index.ts` |
 
-### 3.4 File Placement Guidelines
+### 3.5 File Placement Guidelines
 
 새로운 파일을 추가할 때 아래 기준을 따른다.
 
@@ -455,6 +505,48 @@ import { TaskCard } from '@/src/views/task';
 
 ---
 
+## 6. Code Quality Status
+
+### 6.1 Current Status (2026-01-27)
+
+| Check | Status | Note |
+|-------|--------|------|
+| TypeScript Compilation | PASS | 에러 0개 |
+| Git Conflict Markers | PASS | 충돌 마커 없음 |
+| Import Path Integrity | PASS | 잘못된 경로 없음 |
+| Circular Dependencies | PASS | 순환 참조 없음 |
+| Legacy Folder Cleanup | PASS | `app/components/` 삭제 완료 |
+
+### 6.2 Known Warnings (Non-blocking)
+
+아래 항목들은 배포를 막지 않는 경고 수준이다.
+
+| Category | Item | Priority |
+|----------|------|----------|
+| **Unused Imports** | `CARD_WIDTH`, `CARD_HEIGHT` in BoardScreen.tsx | Low |
+| **Unused Variables** | `draggingFile`, `uploadingCardId` in BoardScreen.tsx | Low |
+| **Tailwind Suggestion** | `rounded-[2rem]` → `rounded-4xl` | Low |
+| **Next.js Warning** | `<img>` → `<Image />` 권장 | Low |
+
+### 6.3 Architecture Compliance
+
+```
+models/ → views/ 참조 없음 (순방향 의존성 준수)
+views/ → containers/ 참조 4개 (hooks 사용 - 정상)
+containers/ → models/ 참조 18개 (API 호출 - 정상)
+```
+
+### 6.4 Critical Patterns Verified
+
+| Pattern | Location | Status |
+|---------|----------|--------|
+| `tasksRef` for stale closure prevention | BoardCanvas.tsx:203-208 | PASS |
+| `calculateShiftTransitions` hoisting | useSortableGrid.ts:245 < updateDrag:269 | PASS |
+| Cleanup ref snapshot | usePendingSync.ts:565-609 | PASS |
+| mock-data CRUD helpers | mock-data.ts:413-603 | PASS (24 exports) |
+
+---
+
 ## Appendix
 
 ### A. Keyboard Shortcuts
@@ -508,5 +600,6 @@ npm run lint -- --fix
 
 ---
 
-**Last Updated:** 2026-01-26  
+**Last Updated:** 2026-01-27  
+**Code Audit:** PASS  
 **Maintainer:** DOMO Frontend Team
