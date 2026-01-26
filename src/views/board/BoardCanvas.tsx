@@ -111,6 +111,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const [lines, setLines] = useState<React.ReactElement[]>([]);
     const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
 
+    // ============================================
+    // [최적화] connections를 Ref로 관리
+    // useCallback 의존성에서 제거하여 불필요한 함수 재생성 방지
+    // (tasksRef는 이미 아래에서 선언됨)
+    // ============================================
+    const connectionsRef = useRef<Connection[]>(connections);
+
+    // props 변경 시 ref 동기화
+    useEffect(() => {
+        connectionsRef.current = connections;
+    }, [connections]);
+
     // 파일 드래그 드롭 상태
     const [fileDropTargetCardId, setFileDropTargetCardId] = useState<number | null>(null);
 
@@ -661,8 +673,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         return () => { window.removeEventListener('resize', handleResize); cancelAnimationFrame(animationFrameId); };
     }, [updateConnections]);
 
-    // 새 카드 생성 핸들러 (useCallback으로 감싸서 의존성 관리)
-    // NOTE: 키보드 이벤트 useEffect에서 참조하므로 반드시 그 앞에 정의해야 함
+    // ============================================
+    // [최적화] 새 카드 생성 핸들러
+    // tasksRef를 사용하여 tasks 의존성 제거 → 불필요한 함수 재생성 방지
+    // ============================================
     const handleCreateNewTask = useCallback(async (x: number, y: number) => {
         if (isCreatingTask) return;
         // 카드 생성 시 자동으로 그룹에 귀속시키지 않음 (자유 배치)
@@ -678,33 +692,39 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (onTaskCreate) {
             setIsCreatingTask(true);
             const tempTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
-            onTasksUpdate([...tasks, tempTask]);
+            // [최적화] tasksRef.current 사용
+            onTasksUpdate([...tasksRef.current, tempTask]);
             try {
                 const savedTask = await onTaskCreate(newTaskData);
-                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id).concat(savedTask));
+                onTasksUpdate(tasksRef.current.filter(t => t.id !== tempTask.id).concat(savedTask));
                 onTaskSelect(savedTask);
             } catch {
-                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id));
+                onTasksUpdate(tasksRef.current.filter(t => t.id !== tempTask.id));
             } finally {
                 setIsCreatingTask(false);
             }
         } else {
             const newTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
-            onTasksUpdate([...tasks, newTask]);
+            // [최적화] tasksRef.current 사용
+            onTasksUpdate([...tasksRef.current, newTask]);
             onTaskSelect(newTask);
         }
-    }, [isCreatingTask, onTaskCreate, onTasksUpdate, tasks, activeBoardId, onTaskSelect]);
+    }, [isCreatingTask, onTaskCreate, onTasksUpdate, activeBoardId, onTaskSelect]); // [최적화] tasks 의존성 제거
 
-    // 선택된 카드 삭제 핸들러 (useCallback으로 감싸서 의존성 관리)
-    // NOTE: 키보드 이벤트 useEffect에서 참조하므로 반드시 그 앞에 정의해야 함
+    // ============================================
+    // [최적화] 선택된 카드 삭제 핸들러
+    // tasksRef, connectionsRef를 사용하여 의존성 제거 → 불필요한 함수 재생성 방지
+    // ============================================
     const handleDeleteSelectedTasks = useCallback(async () => {
         if (selectedTaskIds.size === 0 || isDeletingTask) return;
         const idsToDelete = Array.from(selectedTaskIds);
         setIsDeletingTask(true);
-        const previousTasks = [...tasks];
-        onTasksUpdate(tasks.filter(t => !selectedTaskIds.has(t.id)));
+        // [최적화] tasksRef.current 사용
+        const previousTasks = [...tasksRef.current];
+        onTasksUpdate(tasksRef.current.filter(t => !selectedTaskIds.has(t.id)));
+        // [최적화] connectionsRef.current 사용
         idsToDelete.forEach(id => {
-            connections.filter(c => c.from === id || c.to === id).forEach(c => onConnectionDelete(c.id));
+            connectionsRef.current.filter(c => c.from === id || c.to === id).forEach(c => onConnectionDelete(c.id));
         });
         setSelectedTaskIds(new Set());
         try {
@@ -722,14 +742,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             setIsDeletingTask(false);
             setBackgroundMenu(null);
         }
-    }, [selectedTaskIds, isDeletingTask, tasks, onTasksUpdate, connections, onConnectionDelete, onTaskDelete]);
+    }, [selectedTaskIds, isDeletingTask, onTasksUpdate, onConnectionDelete, onTaskDelete]); // [최적화] tasks, connections 의존성 제거
 
     useEffect(() => {
         const handleKeyDown = (evt: KeyboardEvent) => {
             const key = evt.key.toLowerCase();
             if (key === 'c' && selectedTaskIds.size > 0) {
                 evt.preventDefault();
-                const selectedTasks = tasks.filter(t => selectedTaskIds.has(t.id));
+                // [최적화] tasksRef.current 사용
+                const selectedTasks = tasksRef.current.filter(t => selectedTaskIds.has(t.id));
                 if (selectedTasks.length === 0) return;
 
                 // =========================================
@@ -762,7 +783,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     layoutResult.cardPositions.map(cp => [cp.taskId, { x: cp.x, y: cp.y }])
                 );
 
-                const updatedTasks = tasks.map(t => {
+                // [최적화] tasksRef.current 사용
+                const updatedTasks = tasksRef.current.map(t => {
                     if (selectedTaskIds.has(t.id)) {
                         const newPos = cardPositionMap.get(t.id);
                         return {
@@ -821,7 +843,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedTaskIds, tasks, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag, gridConfig, queueBatchCardChange, handleCreateNewTask, handleDeleteSelectedTasks]);
+    }, [selectedTaskIds, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag, gridConfig, queueBatchCardChange, handleCreateNewTask, handleDeleteSelectedTasks]); // [최적화] tasks 의존성 제거 (tasksRef 사용)
 
     useEffect(() => {
         const handleClickOutside = (evt: MouseEvent) => {
