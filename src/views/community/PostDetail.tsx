@@ -168,11 +168,11 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
     return (
         <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200/50 dark:border-white/10">
-                <div className="flex items-center gap-4 flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200/50 dark:border-white/5">
+                <div className="flex items-center gap-4 flex-1">
                     <button
                         onClick={onBack}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors"
+                        className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors"
                     >
                         <ArrowLeft size={24} className="text-gray-600 dark:text-gray-300" />
                     </button>

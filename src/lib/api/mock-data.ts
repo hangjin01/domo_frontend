@@ -6,8 +6,8 @@ import type {
   Connection,
   EditingCard,
   User,
-} from '../../types';
-import { ActivityLog } from "@/src/lib/api/activity";
+} from '@/src/models/types';
+import { ActivityLog } from "@/src/models/api/activity";
 
 // ============================================
 // 인증 관련 목업 데이터
@@ -277,7 +277,7 @@ export const MOCK_ACTIVITIES: ActivityLog[] = [
 // 게시판 목업 데이터 (신규 추가)
 // ============================================
 
-export const MOCK_POSTS: import('../../types').Post[] = [
+export const MOCK_POSTS: import('@/src/models/types').Post[] = [
   {
     id: 1,
     project_id: 1, // 커뮤니티용 가상 프로젝트 ID
@@ -285,7 +285,7 @@ export const MOCK_POSTS: import('../../types').Post[] = [
     title: '📢 DOMO 플랫폼 오픈 안내',
     content: '안녕하세요, DOMO 플랫폼이 오픈되었습니다! 자유롭게 의견을 남겨주세요.',
     created_at: new Date().toISOString(),
-    user: MOCK_USERS[0] as unknown as import('../../types').User,
+    user: MOCK_USERS[0] as unknown as import('@/src/models/types').User,
     comments: [
       {
         id: 1,
@@ -293,7 +293,7 @@ export const MOCK_POSTS: import('../../types').Post[] = [
         user_id: 2,
         content: '오픈 축하드립니다! UI가 정말 예쁘네요.',
         created_at: new Date(Date.now() - 3600000).toISOString(),
-        user: { id: 2, name: '이협업', email: 'collab@jj.ac.kr' } as any
+        user: { id: 2, name: '이협업', email: 'collab@jj.ac.kr' } as User
       }
     ]
   },
@@ -304,7 +304,7 @@ export const MOCK_POSTS: import('../../types').Post[] = [
     title: '자유 게시판입니다 👋',
     content: '서로 인사 나누고 정보 공유해요!',
     created_at: new Date(Date.now() - 86400000).toISOString(),
-    user: { id: 2, name: '이협업', email: 'collab@jj.ac.kr' } as any,
+    user: { id: 2, name: '이협업', email: 'collab@jj.ac.kr' } as User,
     comments: []
   }
 ];
