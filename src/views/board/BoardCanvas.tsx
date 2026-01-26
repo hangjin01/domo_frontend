@@ -649,7 +649,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
 
         setLines(newLines);
-    }, [connections, connectionDraft, connectionReconnect, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath]);
+    }, [connections, connectionDraft, connectionReconnect, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath, hoveredEndpoint]);
 
     useLayoutEffect(() => {
         updateConnections();
@@ -660,6 +660,69 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         loop();
         return () => { window.removeEventListener('resize', handleResize); cancelAnimationFrame(animationFrameId); };
     }, [updateConnections]);
+
+    // 새 카드 생성 핸들러 (useCallback으로 감싸서 의존성 관리)
+    // NOTE: 키보드 이벤트 useEffect에서 참조하므로 반드시 그 앞에 정의해야 함
+    const handleCreateNewTask = useCallback(async (x: number, y: number) => {
+        if (isCreatingTask) return;
+        // 카드 생성 시 자동으로 그룹에 귀속시키지 않음 (자유 배치)
+        const newTaskData: Partial<Task> = {
+            title: "새로운 카드",
+            status: "todo",
+            x, y,
+            tags: [],
+            boardId: activeBoardId,
+            column_id: undefined,  // undefined = 자유 배치 (그룹에 귀속 안 함)
+        };
+
+        if (onTaskCreate) {
+            setIsCreatingTask(true);
+            const tempTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
+            onTasksUpdate([...tasks, tempTask]);
+            try {
+                const savedTask = await onTaskCreate(newTaskData);
+                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id).concat(savedTask));
+                onTaskSelect(savedTask);
+            } catch {
+                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id));
+            } finally {
+                setIsCreatingTask(false);
+            }
+        } else {
+            const newTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
+            onTasksUpdate([...tasks, newTask]);
+            onTaskSelect(newTask);
+        }
+    }, [isCreatingTask, onTaskCreate, onTasksUpdate, tasks, activeBoardId, onTaskSelect]);
+
+    // 선택된 카드 삭제 핸들러 (useCallback으로 감싸서 의존성 관리)
+    // NOTE: 키보드 이벤트 useEffect에서 참조하므로 반드시 그 앞에 정의해야 함
+    const handleDeleteSelectedTasks = useCallback(async () => {
+        if (selectedTaskIds.size === 0 || isDeletingTask) return;
+        const idsToDelete = Array.from(selectedTaskIds);
+        setIsDeletingTask(true);
+        const previousTasks = [...tasks];
+        onTasksUpdate(tasks.filter(t => !selectedTaskIds.has(t.id)));
+        idsToDelete.forEach(id => {
+            connections.filter(c => c.from === id || c.to === id).forEach(c => onConnectionDelete(c.id));
+        });
+        setSelectedTaskIds(new Set());
+        try {
+            await Promise.all(idsToDelete.map(async (id) => {
+                try {
+                    if (onTaskDelete) await onTaskDelete(id);
+                    else await deleteTask(id);
+                } catch {
+                    // 개별 삭제 실패는 무시
+                }
+            }));
+        } catch {
+            onTasksUpdate(previousTasks);
+        } finally {
+            setIsDeletingTask(false);
+            setBackgroundMenu(null);
+        }
+    }, [selectedTaskIds, isDeletingTask, tasks, onTasksUpdate, connections, onConnectionDelete, onTaskDelete]);
 
     useEffect(() => {
         const handleKeyDown = (evt: KeyboardEvent) => {
@@ -758,7 +821,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedTaskIds, tasks, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag, gridConfig, queueBatchCardChange]);
+    }, [selectedTaskIds, tasks, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag, gridConfig, queueBatchCardChange, handleCreateNewTask, handleDeleteSelectedTasks]);
 
     useEffect(() => {
         const handleClickOutside = (evt: MouseEvent) => {
@@ -772,39 +835,6 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         window.addEventListener('mousedown', handleClickOutside);
         return () => window.removeEventListener('mousedown', handleClickOutside);
     }, [editingGroupId]);
-
-    const handleCreateNewTask = async (x: number, y: number) => {
-        if (isCreatingTask) return;
-        // 카드 생성 시 자동으로 그룹에 귀속시키지 않음 (자유 배치)
-        const newTaskData: Partial<Task> = {
-            title: "새로운 카드",
-            status: "todo",
-            x, y,
-            tags: [],
-            boardId: activeBoardId,
-            column_id: undefined,  // undefined = 자유 배치 (그룹에 귀속 안 함)
-        };
-
-        if (onTaskCreate) {
-            setIsCreatingTask(true);
-            const tempTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
-            onTasksUpdate([...tasks, tempTask]);
-            try {
-                const savedTask = await onTaskCreate(newTaskData);
-                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id).concat(savedTask));
-                onTaskSelect(savedTask);
-            } catch (err) {
-
-                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id));
-            } finally {
-                setIsCreatingTask(false);
-            }
-        } else {
-            const newTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
-            onTasksUpdate([...tasks, newTask]);
-            onTaskSelect(newTask);
-        }
-    };
 
     // Optimistic UI: 카드 위치 저장 (큐에 등록, 즉시 반환)
     const saveTaskPosition = useCallback((taskId: number, newX: number, newY: number, snapshot: CardPositionSnapshot) => {
@@ -842,34 +872,6 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
             onTasksUpdate(previousTasks);
             alert('카드 삭제에 실패했습니다.');
-        } finally {
-            setIsDeletingTask(false);
-            setBackgroundMenu(null);
-        }
-    };
-
-    const handleDeleteSelectedTasks = async () => {
-        if (selectedTaskIds.size === 0 || isDeletingTask) return;
-        const idsToDelete = Array.from(selectedTaskIds);
-        setIsDeletingTask(true);
-        const previousTasks = [...tasks];
-        onTasksUpdate(tasks.filter(t => !selectedTaskIds.has(t.id)));
-        idsToDelete.forEach(id => {
-            connections.filter(c => c.from === id || c.to === id).forEach(c => onConnectionDelete(c.id));
-        });
-        setSelectedTaskIds(new Set());
-        try {
-            await Promise.all(idsToDelete.map(async (id) => {
-                try {
-                    if (onTaskDelete) await onTaskDelete(id);
-                    else await deleteTask(id);
-                } catch (err) {
-
-                }
-            }));
-        } catch (err) {
-
-            onTasksUpdate(previousTasks);
         } finally {
             setIsDeletingTask(false);
             setBackgroundMenu(null);
