@@ -1,820 +1,512 @@
-# DOMO - 협업 워크스페이스 플랫폼
+# DOMO - Collaborative Workspace Platform
 
-비전 있는 팀을 위한 현대적인 협업 도구. 실시간 보드, 캔버스 기반 태스크 관리, 파일 공유, **음성 채팅**을 하나의 플랫폼에서 제공합니다.
-
----
-
-## 목차
-1. [기술 스택](#1-기술-스택)
-2. [프로젝트 구조 (MVC 패턴)](#2-프로젝트-구조-mvc-패턴)
-3. [폴더별 상세 설명](#3-폴더별-상세-설명)
-4. [핵심 기능](#4-핵심-기능)
-5. [타입 시스템](#5-타입-시스템)
-6. [개발 가이드](#6-개발-가이드)
-7. [환경 설정](#7-환경-설정)
-8. [배포](#8-배포)
-9. [트러블슈팅](#9-트러블슈팅)
+캔버스 기반의 실시간 협업 워크스페이스 플랫폼. 태스크 보드, 파일 공유, 음성 채팅을 하나의 인터페이스에서 제공한다.
 
 ---
 
-## 1. 기술 스택
+## Table of Contents
 
-### Frontend
-| 기술 | 버전 | 용도 |
-|------|------|------|
-| **Node.js** | 22.15.0 | 런타임 |
-| **Next.js** | 16+ | App Router 기반 프레임워크 |
-| **React** | 19+ | UI 라이브러리 |
-| **TypeScript** | 5.8+ | 타입 안전성 (Strict Mode) |
-| **Tailwind CSS** | 4 | 스타일링 |
-| **Lucide React** | - | 아이콘 라이브러리 |
-
-### 실시간 통신
-| 기술 | 용도 |
-|------|------|
-| **WebSocket** | 시그널링 서버 연결 |
-| **WebRTC** | P2P 음성 채팅 |
-| **STUN Server** | NAT 트래버설 (`stun.l.google.com`) |
-
-### Backend Integration
-- **API Client**: Custom `apiFetch` wrapper (Fetch API 기반, 쿠키 인증)
-- **Data Layer**: `/models/api` - Type-safe API interface
-- **Mock Mode**: 개발 환경용 Mock 데이터 지원
+1. [Project Overview](#1-project-overview)
+2. [Getting Started](#2-getting-started)
+3. [Project Architecture](#3-project-architecture)
+4. [Key Features and Patterns](#4-key-features-and-patterns)
+5. [Convention](#5-convention)
 
 ---
 
-## 2. 프로젝트 구조 (MVC 패턴)
+## 1. Project Overview
 
-프로젝트는 **MVC(Model-View-Controller) 패턴**을 React/Next.js에 맞게 적용하여 구성되어 있습니다.
+### 프로젝트 소개
+
+DOMO는 팀 협업을 위한 웹 기반 워크스페이스 플랫폼이다. 사용자는 무한 캔버스 위에서 태스크 카드를 자유롭게 배치하고, 드래그 앤 드롭으로 그룹화하며, 실시간으로 팀원과 협업할 수 있다.
+
+### Tech Stack
+
+| Category | Technology | Version | Description |
+|----------|------------|---------|-------------|
+| **Runtime** | Node.js | 22.15.0+ | JavaScript 런타임 |
+| **Framework** | Next.js | 16.1.3 | App Router 기반 React 프레임워크 |
+| **Language** | TypeScript | 5.x | 정적 타입 시스템 (Strict Mode) |
+| **UI Library** | React | 19.x | 컴포넌트 기반 UI |
+| **Styling** | Tailwind CSS | 4.x | 유틸리티 기반 CSS |
+| **Icons** | Lucide React | 0.562.0 | 아이콘 라이브러리 |
+| **Backend** | FastAPI | - | Python 기반 REST API (별도 저장소) |
+| **Real-time** | WebSocket / WebRTC | - | 시그널링 및 P2P 음성 채팅 |
+
+---
+
+## 2. Getting Started
+
+### 2.1 Prerequisites
+
+```bash
+# Node.js 버전 확인 (22.15.0 이상 권장)
+node -v
+
+# npm 버전 확인
+npm -v
+```
+
+### 2.2 Installation
+
+```bash
+# 1. 저장소 클론
+git clone <repository-url>
+cd domo_front
+
+# 2. 의존성 설치
+npm install
+```
+
+### 2.3 Environment Variables
+
+프로젝트 루트에 `.env.local` 파일을 생성하고 아래 내용을 설정한다.
+
+```bash
+# .env.local
+
+# API 서버 URL (FastAPI 백엔드)
+NEXT_PUBLIC_API_URL=https://api.example.com
+
+# WebSocket 서버 URL (음성 채팅용)
+NEXT_PUBLIC_WS_URL=wss://ws.example.com
+
+# Mock 데이터 사용 여부 (개발 시 true, 운영 시 false)
+NEXT_PUBLIC_USE_MOCK=true
+```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Yes | FastAPI 백엔드 API 엔드포인트 |
+| `NEXT_PUBLIC_WS_URL` | No | WebSocket 시그널링 서버 (음성 채팅용) |
+| `NEXT_PUBLIC_USE_MOCK` | No | `true` 설정 시 Mock 데이터 사용 |
+
+### 2.4 Run Development Server
+
+```bash
+# 개발 서버 실행 (http://localhost:3000)
+npm run dev
+
+# 프로덕션 빌드
+npm run build
+
+# 프로덕션 서버 실행
+npm start
+
+# 린트 검사
+npm run lint
+```
+
+---
+
+## 3. Project Architecture
+
+### 3.1 Design Pattern: Views - Containers - Models
+
+프로젝트는 관심사 분리(Separation of Concerns) 원칙에 따라 3-Layer 아키텍처를 적용한다.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        app/ (Entry Point)                   │
+│                    Next.js App Router                       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     containers/ (Logic Layer)               │
+│  ┌─────────────────┐    ┌─────────────────────────────┐    │
+│  │    screens/     │    │          hooks/             │    │
+│  │  (Page Units)   │◄───│   (Business Logic Hooks)    │    │
+│  └─────────────────┘    └─────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+          │                           │
+          ▼                           ▼
+┌─────────────────────┐    ┌─────────────────────────────────┐
+│   views/ (UI Layer) │    │       models/ (Data Layer)      │
+│  Presentational     │    │  ┌───────┐ ┌─────┐ ┌─────────┐ │
+│  Components         │    │  │  api/ │ │types│ │constants│ │
+│  (Props Only)       │    │  └───────┘ └─────┘ └─────────┘ │
+└─────────────────────┘    └─────────────────────────────────┘
+```
+
+### 3.2 Directory Structure
 
 ```
 src/
-├── app/                    # Next.js App Router (진입점)
+├── app/                          # Next.js App Router (진입점)
+│   ├── page.tsx                  #   메인 라우트 (인증 상태별 화면 분기)
+│   ├── layout.tsx                #   루트 레이아웃
+│   └── globals.css               #   전역 스타일 + 다크모드
 │
-├── models/                 # [M] 데이터 & 비즈니스 로직
-│   ├── api/                #     API 통신 함수
-│   ├── types/              #     TypeScript 타입 정의
-│   └── utils/              #     유틸리티 함수
+├── containers/                   # [Logic Layer] 상태 관리 및 비즈니스 로직
+│   ├── screens/                  #   화면 단위 컨트롤러
+│   │   ├── BoardScreen.tsx       #     메인 보드 화면 (920 lines)
+│   │   ├── LoginScreen.tsx       #     로그인 화면
+│   │   ├── SignupScreen.tsx      #     회원가입 화면
+│   │   ├── ProjectSelectScreen.tsx    프로젝트 선택 화면
+│   │   ├── WorkspaceListScreen.tsx    워크스페이스 목록 화면
+│   │   ├── VerifyEmailScreen.tsx #     이메일 인증 화면
+│   │   └── VerifySuccessScreen.tsx    인증 완료 화면
+│   │
+│   └── hooks/                    #   재사용 가능한 비즈니스 로직
+│       ├── common/               #     공통 Hooks
+│       │   ├── usePendingSync.ts #       Optimistic UI + Batch API (642 lines)
+│       │   └── useVoiceChat.ts   #       WebRTC 음성 채팅
+│       └── board/                #     보드 전용 Hooks
+│           └── useSortableGrid.ts#       드래그 앤 드롭 그리드 (588 lines)
 │
-├── views/                  # [V] 순수 UI 컴포넌트 (props만 받아서 렌더링)
-│   ├── board/              #     캔버스 보드 UI
-│   ├── task/               #     태스크 카드/모달 UI
-│   ├── calendar/           #     캘린더 뷰 UI
-│   ├── timeline/           #     타임라인 뷰 UI
-│   ├── profile/            #     프로필/설정 UI
-│   ├── dock/               #     하단 독바 UI
-│   └── common/             #     공통 UI (Mascot 등)
+├── views/                        # [UI Layer] 순수 프레젠테이션 컴포넌트
+│   ├── board/                    #   캔버스 보드 UI
+│   │   ├── BoardCanvas.tsx       #     메인 캔버스 (1831 lines)
+│   │   ├── SortableGroup.tsx     #     그룹 컴포넌트
+│   │   └── SyncStatusIndicator.tsx    동기화 상태 표시기
+│   ├── task/                     #   태스크 관련 UI
+│   │   ├── TaskCard.tsx          #     태스크 카드
+│   │   └── TaskDetailModal.tsx   #     태스크 상세 모달
+│   ├── calendar/                 #   캘린더 뷰
+│   │   └── CalendarView.tsx
+│   ├── timeline/                 #   타임라인 뷰
+│   │   └── TimelineView.tsx
+│   ├── profile/                  #   프로필/설정
+│   │   ├── ProfileCard.tsx
+│   │   ├── MyPageView.tsx
+│   │   ├── SettingsView.tsx
+│   │   └── ActivityList.tsx
+│   ├── dock/                     #   하단 독바
+│   │   ├── Dock.tsx
+│   │   ├── DockButton.tsx
+│   │   └── FileListPanel.tsx
+│   ├── community/                #   커뮤니티 게시판
+│   │   ├── CommunityBoard.tsx
+│   │   ├── PostList.tsx
+│   │   ├── PostDetail.tsx
+│   │   └── PostWriter.tsx
+│   └── common/                   #   공통 UI 컴포넌트
+│       ├── Mascot.tsx            #     마스코트 애니메이션
+│       └── FileVersionDropdown.tsx    파일 버전 선택
 │
-└── containers/             # [C] 상태 관리 & 화면 조합
-    ├── screens/            #     화면 단위 컨트롤러
-    └── hooks/              #     비즈니스 로직 Hooks
-        ├── common/         #         공통 Hooks
-        └── board/          #         보드 전용 Hooks
+└── models/                       # [Data Layer] 데이터 정의 및 API
+    ├── api/                      #   API 통신 함수
+    │   ├── config.ts             #     API 설정 (apiFetch wrapper)
+    │   ├── auth.ts               #     인증 API
+    │   ├── board.ts              #     보드/태스크/연결선 API
+    │   ├── workspace.ts          #     워크스페이스 API
+    │   ├── file.ts               #     파일 업로드 API
+    │   ├── user.ts               #     사용자 API
+    │   ├── post.ts               #     게시글 API
+    │   ├── activity.ts           #     활동 로그 API
+    │   ├── schedule.ts           #     일정 API
+    │   ├── mappers.ts            #     API 응답 변환기
+    │   └── mock-data.ts          #     개발용 Mock 데이터
+    ├── types/                    #   TypeScript 타입 정의
+    │   └── index.ts              #     모든 인터페이스/타입
+    ├── constants/                #   상수 정의
+    │   └── grid.ts               #     그리드 레이아웃 상수
+    └── utils/                    #   유틸리티 함수
+        ├── canvas.ts             #     캔버스 계산 유틸
+        ├── groupLayout.ts        #     그룹 레이아웃 계산
+        └── image.ts              #     이미지 처리 유틸
 ```
 
-### MVC 역할 분담
+### 3.3 Layer Responsibilities
 
-| 레이어 | 폴더 | 역할 | 예시 |
-|--------|------|------|------|
-| **Model** | `models/` | 데이터 구조, API 통신, 비즈니스 로직 | `api/board.ts`, `types/index.ts` |
-| **View** | `views/` | 순수 UI 렌더링 (props만 받음) | `BoardCanvas.tsx`, `TaskCard.tsx` |
-| **Controller** | `containers/` | 상태 관리, 이벤트 핸들링, View와 Model 연결 | `BoardScreen.tsx`, `useBoardData.ts` |
+| Layer | Directory | Responsibility | Example |
+|-------|-----------|----------------|---------|
+| **Views** | `views/` | 순수 UI 렌더링. Props만 받아서 화면에 표시. 상태 관리 금지. | `TaskCard.tsx`, `CalendarView.tsx` |
+| **Containers** | `containers/` | 상태 관리, API 호출 조율, 이벤트 핸들링. Views와 Models 연결. | `BoardScreen.tsx`, `usePendingSync.ts` |
+| **Models** | `models/` | 데이터 구조 정의, API 통신, 순수 유틸리티 함수. UI 로직 금지. | `api/board.ts`, `types/index.ts` |
+
+### 3.4 File Placement Guidelines
+
+새로운 파일을 추가할 때 아래 기준을 따른다.
+
+| 파일 유형 | 배치 위치 | 판단 기준 |
+|-----------|-----------|-----------|
+| UI 컴포넌트 (Props Only) | `views/<domain>/` | `useState`, `useEffect` 없이 props만으로 렌더링 가능한가? |
+| 화면 컨트롤러 | `containers/screens/` | 여러 컴포넌트를 조합하고 상태를 관리하는가? |
+| 재사용 로직 | `containers/hooks/` | 여러 화면에서 공유되는 상태/로직인가? |
+| API 함수 | `models/api/` | 서버와 통신하는 함수인가? |
+| 타입 정의 | `models/types/` | 인터페이스 또는 타입 선언인가? |
+| 순수 함수 | `models/utils/` | 입력값만으로 출력이 결정되는 순수 함수인가? |
 
 ---
 
-## 3. 폴더별 상세 설명
+## 4. Key Features and Patterns
 
-### 3.1 `app/` - Next.js App Router
+### 4.1 Optimistic UI Pattern
+
+사용자 경험 향상을 위해 API 응답을 기다리지 않고 즉시 UI를 업데이트한다.
 
 ```
-app/
-├── page.tsx          # 라우팅 진입점 (인증 상태에 따른 화면 분기)
-├── layout.tsx        # 루트 레이아웃
-├── globals.css       # Tailwind 글로벌 스타일 + 다크모드
-└── favicon.ico
+[사용자 액션] → [즉시 UI 업데이트] → [백그라운드 API 호출] → [실패 시 롤백]
 ```
 
-`page.tsx`는 현재 인증 상태와 선택된 워크스페이스/프로젝트에 따라 적절한 Screen을 렌더링합니다:
+**구현 위치:** `src/containers/hooks/common/usePendingSync.ts`
 
 ```typescript
-// 화면 흐름
-로그인 전    → LoginScreen / SignupScreen / VerifyEmailScreen
-로그인 후    → WorkspaceListScreen (워크스페이스 선택)
-→ ProjectSelectScreen (프로젝트 선택)
-→ BoardScreen (보드 작업)
+// 사용 예시
+const { queueChange, syncStatus, pendingCount } = usePendingSync({
+  debounceMs: 400,      // 연속 드래그 대응
+  maxRetries: 3,        // 실패 시 최대 3회 재시도
+  onRollback: (change) => {
+    // 실패 시 이전 상태로 복원
+    revertToSnapshot(change.snapshot);
+  }
+});
+
+// 카드 위치 변경 시
+queueChange({
+  type: 'card-position',
+  entityId: taskId,
+  payload: { x: newX, y: newY },
+  snapshot: { x: oldX, y: oldY },  // 롤백용 스냅샷
+  apiCall: () => updateTaskPosition(taskId, newX, newY)
+});
 ```
 
----
+**개발 시 주의사항:**
+- 모든 변경 사항에 `snapshot`을 반드시 포함하여 롤백 가능하게 할 것
+- 네트워크 오류 시 사용자에게 `SyncStatusIndicator`로 상태를 표시할 것
 
-### 3.2 `models/` - 데이터 레이어
+### 4.2 Batch API Pattern
 
-#### 3.2.1 `models/api/` - API 통신
-
-| 파일 | 역할 | 주요 함수 |
-|------|------|-----------|
-| `config.ts` | API 설정 | `apiFetch()`, `API_CONFIG`, `getWebSocketUrl()` |
-| `auth.ts` | 인증 | `login()`, `signup()`, `verify()`, `logout()`, `checkAuth()` |
-| `board.ts` | 보드/태스크 | `getTasks()`, `createTask()`, `updateTask()`, `deleteTask()` |
-| `workspace.ts` | 워크스페이스 | `getWorkspaces()`, `createWorkspace()`, `getProjects()` |
-| `file.ts` | 파일 관리 | `getProjectFiles()`, `uploadFile()`, `deleteFile()`, `getFileVersions()`, `attachFileToCard()`, `detachFileFromCard()` |
-| `user.ts` | 사용자 | `getMyInfo()`, `updateMyInfo()`, `updateProfileImage()` |
-| `activity.ts` | 활동 로그 | `getMyActivities()` |
-| `schedule.ts` | 일정 | `getMySchedules()`, `getCommonFreeTime()` |
-| `mappers.ts` | 타입 변환 | Backend ↔ Frontend 타입 매핑 |
-| `mock-data.ts` | Mock 데이터 | 개발용 더미 데이터 |
-| `index.ts` | 통합 Export | 모든 API 함수 re-export |
-
-**사용 예시:**
-```typescript
-import { getTasks, createTask, login } from '@/src/models/api';
-```
-
-#### 3.2.2 `models/types/` - 타입 정의
-
-모든 TypeScript 타입이 `index.ts`에 정의되어 있습니다:
-
-```typescript
-import type { Task, Project, User, Connection } from '@/src/models/types';
-```
-
-주요 타입:
-- `User`, `AuthUser`, `Member` - 사용자 관련
-- `Workspace`, `Project` - 워크스페이스/프로젝트
-- `Task`, `Column`, `Connection`, `Group` - 보드/태스크
-- `BackendCardResponse`, `BackendBoardResponse` - API 응답 타입
-
-#### 3.2.3 `models/utils/` - 유틸리티
+다수의 카드를 동시에 이동할 때 (예: 그룹 생성) 개별 API 호출 대신 일괄 처리한다.
 
 ```
-utils/
-└── canvas.ts         # 캔버스 색상/스타일 유틸리티 (getStickyStyle 등)
+[개별 호출]  PUT /tasks/1  →  PUT /tasks/2  →  PUT /tasks/3  (3회 호출)
+[Batch 호출] PUT /tasks/batch  { items: [task1, task2, task3] }  (1회 호출)
 ```
 
----
-
-### 3.3 `views/` - UI 컴포넌트 레이어
-
-**원칙**: View 컴포넌트는 **순수 UI**만 담당합니다. 상태 관리나 API 호출 없이 props만 받아서 렌더링합니다.
-
-#### 3.3.1 `views/board/` - 캔버스 보드
-
-| 파일 | 역할 |
-|------|------|
-| `BoardCanvas.tsx` | 무한 캔버스, 드래그&드롭, 연결선 렌더링 |
-| `SortableGroup.tsx` | 그룹 컴포넌트, 정렬 가능한 카드 컨테이너 |
-| `DropZoneOverlay.tsx` | 드롭 영역 오버레이 |
-| `index.ts` | Export |
-
-**사용:**
-```typescript
-import { BoardCanvas, SortableGroup } from '@/src/views/board';
-```
-
-#### 3.3.2 `views/task/` - 태스크 UI
-
-| 파일 | 역할 |
-|------|------|
-| `TaskCard.tsx` | 포스트잇 스타일 태스크 카드 |
-| `TaskDetailModal.tsx` | 태스크 상세 모달 (댓글, 파일, 날짜 등) |
-| `index.ts` | Export |
-
-**사용:**
-```typescript
-import { TaskCard, TaskDetailModal } from '@/src/views/task';
-```
-
-#### 3.3.3 `views/calendar/` - 캘린더 뷰
+**구현 위치:** `src/containers/hooks/common/usePendingSync.ts`
 
 ```typescript
-import { CalendarView } from '@/src/views/calendar';
+// Batch 사용 예시
+const { queueBatchChange } = usePendingSync({ ... });
 
-<CalendarView tasks={tasks} onTaskSelect={handleTaskSelect} />
+// 그룹 생성 시 여러 카드를 한 번에 업데이트
+queueBatchChange([
+  { entityId: 1, payload: { x: 100, y: 100, column_id: groupId }, snapshot: { ... } },
+  { entityId: 2, payload: { x: 200, y: 100, column_id: groupId }, snapshot: { ... } },
+  { entityId: 3, payload: { x: 100, y: 200, column_id: groupId }, snapshot: { ... } },
+]);
 ```
 
-#### 3.3.4 `views/timeline/` - 타임라인 뷰
+**성능 개선 효과:**
+- API 호출 횟수: N회 → 1회
+- 네트워크 오버헤드 감소
+- 트랜잭션 일관성 보장 (전체 성공 또는 전체 롤백)
 
+### 4.3 Ref Pattern for Performance Optimization
+
+고빈도 이벤트 핸들러(드래그, 키보드)에서 불필요한 함수 재생성을 방지한다.
+
+**문제 상황:**
 ```typescript
-import { TimelineView } from '@/src/views/timeline';
-
-<TimelineView tasks={tasks} onTaskSelect={handleTaskSelect} />
+// Bad: tasks가 변경될 때마다 handleDelete가 재생성됨
+const handleDelete = useCallback(() => {
+  onTasksUpdate(tasks.filter(t => !selected.has(t.id)));
+}, [tasks, selected, onTasksUpdate]);  // tasks 의존성으로 인한 재생성
 ```
 
-#### 3.3.5 `views/profile/` - 프로필/설정
-
-| 파일 | 역할 |
-|------|------|
-| `ProfileCard.tsx` | 프로필 카드 (이미지/이름 수정) |
-| `ActivityList.tsx` | 활동 로그 리스트 |
-| `SettingsView.tsx` | 설정 화면 (프로필 탭 + 환경설정 탭) |
-| `MyPageView.tsx` | 마이페이지 메인 뷰 |
-| `index.ts` | Export |
-
-**사용:**
+**해결 패턴:**
 ```typescript
-import { ProfileCard, SettingsView, ActivityList } from '@/src/views/profile';
+// Good: tasksRef를 사용하여 의존성 제거
+const tasksRef = useRef(tasks);
+useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+
+const handleDelete = useCallback(() => {
+  onTasksUpdate(tasksRef.current.filter(t => !selected.has(t.id)));
+}, [selected, onTasksUpdate]);  // tasks 의존성 제거됨
 ```
 
-#### 3.3.6 `views/dock/` - 하단 독바
+**구현 위치:** `src/views/board/BoardCanvas.tsx`
 
-| 파일 | 역할 |
-|------|------|
-| `Dock.tsx` | macOS 스타일 하단 독 (뷰 전환, 음성채팅, 멤버) |
-| `DockButton.tsx` | 독 버튼 컴포넌트 |
-| `FileListPanel.tsx` | 프로젝트 파일 목록 패널 (업로드, 삭제, 드래그&드롭) |
-| `index.ts` | Export |
+**적용 대상:**
+- `tasksRef`: 태스크 배열 참조
+- `connectionsRef`: 연결선 배열 참조
+- `groupsRef`: 그룹 배열 참조
 
-**사용:**
+**주의사항:**
+- `tasksRef.current`는 로직 참조용으로만 사용할 것
+- JSX 렌더링에는 반드시 `tasks` props를 직접 사용할 것
+- 상태 변경은 반드시 `onTasksUpdate()` 등 setter를 통해 수행할 것
+
+### 4.4 Drag and Drop Grid System
+
+카드와 그룹의 드래그 앤 드롭을 처리하는 그리드 시스템이다.
+
+**구현 위치:** `src/containers/hooks/board/useSortableGrid.ts`
+
+**주요 기능:**
+- 그리드 기반 위치 계산 (스냅 투 그리드)
+- 드롭 프리뷰 표시
+- 카드 밀어내기 애니메이션
+- 그룹 간 카드 이동
+
 ```typescript
-import { Dock, DockButton, FileListPanel } from '@/src/views/dock';
-```
-
-#### 3.3.7 `views/common/` - 공통 UI
-
-| 파일 | 역할 |
-|------|------|
-| `Mascot.tsx` | 마스코트 컴포넌트 |
-| `FileVersionDropdown.tsx` | 파일 버전 히스토리 드롭다운 (Portal 기반) |
-| `index.ts` | Export |
-
-**사용:**
-```typescript
-import { Mascot, FileVersionDropdown } from '@/src/views/common';
+const {
+  dragContext,      // 현재 드래그 상태
+  dropPreview,      // 드롭 위치 프리뷰
+  startDrag,        // 드래그 시작
+  updateDrag,       // 드래그 중 위치 업데이트
+  endDrag,          // 드래그 종료
+  cancelDrag,       // 드래그 취소 (ESC)
+} = useSortableGrid({ tasks, groups, gridConfig, onTasksUpdate, onGroupsUpdate });
 ```
 
 ---
 
-### 3.4 `containers/` - 컨트롤러 레이어
+## 5. Convention
 
-#### 3.4.1 `containers/screens/` - 화면 컨트롤러
-
-각 Screen은 **상태 관리 + API 호출 + View 조합**을 담당합니다.
-
-| 파일 | 역할 | 주요 기능 |
-|------|------|-----------|
-| `LoginScreen.tsx` | 로그인 화면 | 로그인 폼, 인증 처리 |
-| `SignupScreen.tsx` | 회원가입 화면 | 회원가입 폼, 이메일 검증 |
-| `VerifyEmailScreen.tsx` | 이메일 인증 화면 | 인증 코드 입력 |
-| `VerifySuccessScreen.tsx` | 인증 완료 화면 | 성공 메시지 |
-| `WorkspaceListScreen.tsx` | 워크스페이스 목록 | 워크스페이스 선택/생성/삭제 |
-| `ProjectSelectScreen.tsx` | 프로젝트 선택 | 프로젝트 목록, 프로필, 설정 |
-| `BoardScreen.tsx` | 보드 메인 화면 | 캔버스, 뷰 전환, 태스크 CRUD |
-| `index.ts` | 통합 Export | 모든 Screen re-export |
-
-**사용:**
-```typescript
-import {
-    LoginScreen,
-    SignupScreen,
-    WorkspaceListScreen,
-    ProjectSelectScreen,
-    BoardScreen,
-} from '@/src/containers/screens';
-```
-
-#### 3.4.2 `containers/hooks/` - 비즈니스 로직 Hooks
-
-**`hooks/common/` - 공통 Hooks**
-
-| 파일 | 역할 |
-|------|------|
-| `useVoiceChat.ts` | WebRTC 음성 채팅 (참여/퇴장, 음소거) |
-| `useDragAndDrop.ts` | 범용 드래그 앤 드롭 로직 |
-| `index.ts` | Export |
-
-**`hooks/board/` - 보드 전용 Hooks**
-
-| 파일 | 역할 |
-|------|------|
-| `useSortableGrid.ts` | 그룹 내 카드 정렬 로직 |
-| `index.ts` | Export |
-
-**사용:**
-```typescript
-import { useVoiceChat, useDragAndDrop } from '@/src/containers/hooks/common';
-import { useSortableGrid } from '@/src/containers/hooks/board';
-```
-
----
-
-## 4. 핵심 기능
-
-### 4.1 무한 캔버스 보드
-
-| 기능 | 설명 |
-|------|------|
-| **드래그 앤 드롭** | 포스트잇 스타일 태스크 카드 자유 배치 |
-| **연결선** | 태스크 간 관계 시각화 (Bezier/Straight, Solid/Dashed) |
-| **연결선 호버 피드백** | 마우스 위치 기반 가까운 끝점 하이라이트 |
-| **그룹핑** | 여러 카드를 그룹으로 묶기 (`Ctrl + Drag`로 선택 후 `C`) |
-| **우클릭 팬** | 우클릭 + 드래그로 캔버스 이동 |
-| **스냅 투 그리드** | 정렬 도우미 |
-| **파일 카드** | 파일 업로드 → 캔버스에 파일 카드 생성 |
-| **카드 드래그 Threshold** | 8px 이상 이동 시 드래그 시작 (클릭과 구분) |
-
-### 4.2 다중 뷰 모드
-
-| 뷰 | 컴포넌트 | 설명 |
-|------|------|------|
-| **Board** | `BoardCanvas` | 무한 캔버스 (기본) |
-| **Calendar** | `CalendarView` | 월별 캘린더 뷰 |
-| **Timeline** | `TimelineView` | 간트 차트 스타일 타임라인 |
-| **Settings** | `SettingsView` | 프로필 설정 + 환경설정 |
-
-### 4.3 파일 관리 시스템
-
-| 기능 | 설명 |
-|------|------|
-| **파일 목록 패널** | Dock 파일 버튼으로 토글, 프로젝트 파일 목록 표시 |
-| **파일 업로드** | 드래그&드롭 또는 버튼 클릭으로 업로드 |
-| **네이티브 파일 드롭** | 바탕화면에서 캔버스로 직접 파일 드래그 앤 드롭 |
-| **카드에 파일 드롭** | 파일을 카드 위에 드롭하면 업로드 + 카드에 첨부 |
-| **배경에 파일 드롭** | 파일을 캔버스 배경에 드롭하면 프로젝트 파일로 업로드 + 파일 패널 열림 |
-| **버전 관리** | 동일 파일명 업로드 시 자동 버전 업데이트 (v1, v2, ...) |
-| **버전 히스토리** | 다운로드 버튼 클릭 시 버전 목록에서 원하는 버전 선택 |
-| **카드 첨부** | 파일을 카드 위로 드래그하여 첨부 |
-| **파일 연결 해제** | 카드 상세에서 첨부 파일 연결 해제 |
+### 5.1 Git Branch Strategy
 
 ```
-┌─────────────────────┐     ┌──────────────────┐
-│ 프로젝트 파일       │     │ 버전 히스토리     │
-│                     │     │                  │
-│ 📄 기획서.pdf  [⬇]──┼────►│ v3 (최신) 1.2MB  │
-│ 📄 시안.png   [⬇]  │     │ v2 - 1.0MB       │
-│ 📄 회의록.docx [⬇] │     │ v1 - 0.8MB       │
-└─────────────────────┘     └──────────────────┘
+main                 # 프로덕션 배포 브랜치
+  └── develop        # 개발 통합 브랜치
+        ├── feature/board-optimization    # 기능 개발
+        ├── feature/voice-chat            # 기능 개발
+        ├── fix/drag-drop-bug             # 버그 수정
+        └── refactor/batch-api            # 리팩토링
 ```
 
-### 4.4 실시간 음성 채팅 (WebRTC)
+| Branch | Purpose | Merge Target |
+|--------|---------|--------------|
+| `main` | 프로덕션 배포용. 직접 커밋 금지. | - |
+| `develop` | 개발 통합. 다음 릴리스 준비. | `main` |
+| `feature/*` | 새 기능 개발 | `develop` |
+| `fix/*` | 버그 수정 | `develop` |
+| `refactor/*` | 코드 개선 (기능 변경 없음) | `develop` |
+| `hotfix/*` | 긴급 프로덕션 버그 수정 | `main`, `develop` |
+
+### 5.2 Commit Message Convention
+
+Conventional Commits 형식을 따른다.
 
 ```
-┌─────────────┐     WebSocket      ┌──────────────┐
-│   Client A  │ ◄─────────────────► │ Signal Server│
-└──────┬──────┘                     └──────┬───────┘
-       │                                   │
-       │  Offer/Answer/ICE                 │
-       │◄──────────────────────────────────┤
-       │                                   │
-       │         P2P Audio Stream          │
-       │◄─────────────────────────────────►│
-       │                                   │
-┌──────▼──────┐                     ┌──────▼───────┐
-│   Client B  │ ◄─────────────────► │ Signal Server│
-└─────────────┘     WebSocket       └──────────────┘
+<type>: <subject>
+
+<body>
 ```
 
-**기능:**
-- 음성 채널 참여/퇴장
-- 마이크 음소거 (Mute)
-- 스피커 음소거 (Deafen)
-- 현재 음성 채팅 참여자 표시
+**Type 목록:**
 
-### 4.5 인증 & 권한
+| Type | Description | Example |
+|------|-------------|---------|
+| `feat` | 새로운 기능 추가 | `feat: Add batch API for card position update` |
+| `fix` | 버그 수정 | `fix: Resolve drag preview position offset` |
+| `refactor` | 코드 리팩토링 (기능 변경 없음) | `refactor: Extract useBoardData hook from BoardScreen` |
+| `perf` | 성능 개선 | `perf: Apply tasksRef pattern to reduce re-renders` |
+| `style` | 코드 포맷팅 (세미콜론, 들여쓰기 등) | `style: Format BoardCanvas with Prettier` |
+| `docs` | 문서 수정 | `docs: Update README with architecture diagram` |
+| `test` | 테스트 추가/수정 | `test: Add unit tests for usePendingSync` |
+| `chore` | 빌드, 설정 파일 수정 | `chore: Update ESLint configuration` |
 
-| 기능 | 설명 |
-|------|------|
-| **학교 이메일 인증** | `@jj.ac.kr` 도메인 검증 |
-| **쿠키 기반 세션** | `credentials: 'include'` |
-| **워크스페이스 멤버십** | 초대 링크 기반 팀 구성 |
-
----
-
-## 5. 타입 시스템
-
-### 5.1 주요 타입 (models/types/index.ts)
-
-```typescript
-// 사용자
-interface User {
-    id: number;
-    email: string;
-    name: string;
-    is_student_verified?: boolean;
-    profile_image?: string | null;
-}
-
-// 워크스페이스 & 프로젝트
-interface Workspace {
-    id: number;
-    name: string;
-    description: string;
-    owner_id: number;
-    projects: Project[];
-}
-
-interface Project {
-    id: number;
-    name: string;
-    workspace: string;
-    workspace_id?: number;
-    role: string;
-    progress: number;
-    memberCount: number;
-}
-
-// 태스크
-interface Task {
-    id: number;
-    title: string;
-    status: TaskStatus;  // 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done'
-    content?: string;
-    x: number;
-    y: number;
-    boardId: number;
-    column_id?: number;
-    tags?: Tag[];
-    comments?: Comment[];
-    files?: TaskFile[];
-    assignees?: Assignee[];
-}
-
-// 연결선
-interface Connection {
-    id: number;
-    from: number;
-    to: number;
-    shape?: 'bezier' | 'straight';
-    style?: 'solid' | 'dashed';
-    sourceHandle?: 'left' | 'right';
-    targetHandle?: 'left' | 'right';
-}
-
-// 그룹
-interface Group {
-    id: number;
-    title: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    localX?: number;     // 백엔드 저장 위치 (새로고침 시 복원용)
-    localY?: number;     // 백엔드 저장 위치 (새로고침 시 복원용)
-    parentId?: number | null;
-    depth: number;
-    collapsed?: boolean;
-    projectId: number;
-}
-```
-
----
-
-## 6. 개발 가이드
-
-### 6.1 시작하기
+**Commit Message 예시:**
 
 ```bash
-# 1. 의존성 설치
-npm install
+# 기능 추가
+git commit -s -m "feat: Implement optimistic UI for card deletion" -m "- Add snapshot for rollback support
+- Integrate with usePendingSync hook
+- Display error state in SyncStatusIndicator"
 
-# 2. 환경 변수 설정 (.env.local 생성)
-NEXT_PUBLIC_API_URL=http://localhost:9000/api
-NEXT_PUBLIC_WS_URL=ws://localhost:9000
-NEXT_PUBLIC_USE_MOCK=false
+# 버그 수정
+git commit -s -m "fix: Prevent stale ref access in cleanup function" -m "- Copy ref values at effect start
+- Resolves exhaustive-deps lint warning"
 
-# 3. 개발 서버 실행
-npm run dev
-
-# 4. 빌드
-npm run build
+# 성능 개선
+git commit -s -m "perf: Reduce event listener re-registration in BoardCanvas" -m "- Use tasksRef instead of tasks in useCallback deps
+- Remove tasks from useEffect dependency array"
 ```
 
-### 6.2 Import 경로 규칙
+### 5.3 Code Style
 
-프로젝트는 `@/src/` alias를 사용합니다:
+**Import 순서:**
 
 ```typescript
-// Models (데이터/API)
+// 1. React/Next.js
+import { useState, useCallback, useRef, useEffect } from 'react';
+
+// 2. External Libraries
+import { Camera, Trash2 } from 'lucide-react';
+
+// 3. Internal: Models
 import { getTasks, createTask } from '@/src/models/api';
-import type { Task, User } from '@/src/models/types';
-import { getStickyStyle } from '@/src/models/utils/canvas';
+import type { Task, Connection } from '@/src/models/types';
 
-// Views (UI 컴포넌트)
-import { BoardCanvas } from '@/src/views/board';
-import { TaskCard, TaskDetailModal } from '@/src/views/task';
-import { CalendarView } from '@/src/views/calendar';
-import { TimelineView } from '@/src/views/timeline';
-import { ProfileCard, SettingsView } from '@/src/views/profile';
-import { Dock } from '@/src/views/dock';
-import { Mascot } from '@/src/views/common';
+// 4. Internal: Containers
+import { usePendingSync } from '@/src/containers/hooks/common';
 
-// Containers (Screens & Hooks)
-import { BoardScreen, LoginScreen } from '@/src/containers/screens';
-import { useVoiceChat } from '@/src/containers/hooks/common';
-import { useSortableGrid } from '@/src/containers/hooks/board';
+// 5. Internal: Views
+import { TaskCard } from '@/src/views/task';
 ```
 
-### 6.3 새 기능 추가 방법
+**Naming Convention:**
 
-#### Step 1: 타입 정의 (`models/types/index.ts`)
-```typescript
-export interface NewFeature {
-    id: number;
-    name: string;
-}
-```
-
-#### Step 2: API 함수 작성 (`models/api/new-feature.ts`)
-```typescript
-import { API_CONFIG, apiFetch, mockDelay } from './config';
-import type { NewFeature } from '../types';
-
-export async function getNewFeatures(): Promise<NewFeature[]> {
-    if (API_CONFIG.USE_MOCK) {
-        await mockDelay(200);
-        return [{ id: 1, name: 'Mock Feature' }];
-    }
-    return apiFetch<NewFeature[]>('/new-features');
-}
-```
-
-#### Step 3: Export 추가 (`models/api/index.ts`)
-```typescript
-export { getNewFeatures } from './new-feature';
-```
-
-#### Step 4: View 컴포넌트 작성 (`views/new-feature/NewFeatureCard.tsx`)
-```typescript
-'use client';
-
-import React from 'react';
-import type { NewFeature } from '@/src/models/types';
-
-interface Props {
-    feature: NewFeature;
-    onClick: (feature: NewFeature) => void;
-}
-
-export function NewFeatureCard({ feature, onClick }: Props) {
-    return (
-        <div onClick={() => onClick(feature)}>
-    {feature.name}
-    </div>
-);
-}
-```
-
-#### Step 5: index.ts 작성 (`views/new-feature/index.ts`)
-```typescript
-export { NewFeatureCard } from './NewFeatureCard';
-```
-
-#### Step 6: Screen에서 조합 (`containers/screens/SomeScreen.tsx`)
-```typescript
-import { getNewFeatures } from '@/src/models/api';
-import { NewFeatureCard } from '@/src/views/new-feature';
-
-// Screen에서 데이터 fetch + View 렌더링
-```
-
-### 6.4 컴포넌트 개발 패턴
-
-#### 낙관적 UI 업데이트 (Optimistic Update)
-```typescript
-const handleCreateTask = async (taskData: Partial<Task>) => {
-    // 1. 즉시 UI 업데이트 (임시 ID)
-    const tempTask = { ...taskData, id: Date.now() } as Task;
-    setTasks(prev => [...prev, tempTask]);
-
-    try {
-        // 2. 실제 API 호출
-        const savedTask = await createTask(projectId, taskData);
-
-        // 3. 실제 데이터로 교체
-        setTasks(prev => prev.map(t =>
-            t.id === tempTask.id ? savedTask : t
-        ));
-    } catch (err) {
-        // 4. 실패 시 롤백
-        setTasks(prev => prev.filter(t => t.id !== tempTask.id));
-        console.error('Failed to create task:', err);
-    }
-};
-```
-
-#### View와 Controller 분리 원칙
-```typescript
-// View: 순수 UI만 (props로 모든 것을 받음)
-// views/task/TaskCard.tsx
-export function TaskCard({ task, onClick, onDelete }: TaskCardProps) {
-    return (
-        <div onClick={() => onClick(task)}>
-    {task.title}
-    <button onClick={() => onDelete(task.id)}>Delete</button>
-    </div>
-);
-}
-
-// Controller: 상태 관리 + API 호출
-// containers/screens/BoardScreen.tsx
-export function BoardScreen({ project }) {
-    const [tasks, setTasks] = useState<Task[]>([]);
-
-    const handleTaskClick = (task: Task) => { /* ... */ };
-    const handleTaskDelete = async (taskId: number) => {
-        await deleteTask(taskId);
-        setTasks(prev => prev.filter(t => t.id !== taskId));
-    };
-
-    return (
-        <TaskCard
-            task={task}
-    onClick={handleTaskClick}
-    onDelete={handleTaskDelete}
-    />
-);
-}
-```
+| Type | Convention | Example |
+|------|------------|---------|
+| Component | PascalCase | `BoardCanvas`, `TaskCard` |
+| Hook | camelCase with `use` prefix | `usePendingSync`, `useSortableGrid` |
+| Function | camelCase | `handleDragEnd`, `calculatePosition` |
+| Constant | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT`, `GRID_SIZE` |
+| Type/Interface | PascalCase | `Task`, `ConnectionProps` |
+| File (Component) | PascalCase.tsx | `BoardCanvas.tsx` |
+| File (Hook) | camelCase.ts | `usePendingSync.ts` |
+| File (Util) | camelCase.ts | `groupLayout.ts` |
 
 ---
 
-## 7. 환경 설정
+## Appendix
 
-### 7.1 환경 변수 (`.env.local`)
+### A. Keyboard Shortcuts
+
+| Key | Action | Context |
+|-----|--------|---------|
+| `N` | 새 카드 생성 | 캔버스 |
+| `C` | 선택된 카드들로 그룹 생성 | 카드 선택 시 |
+| `Delete` / `Backspace` | 선택된 카드 삭제 | 카드 선택 시 |
+| `Escape` | 드래그 취소 / 선택 해제 | 드래그 중 |
+
+### B. API Endpoints (Backend)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/tasks` | 태스크 목록 조회 |
+| `POST` | `/tasks` | 태스크 생성 |
+| `PUT` | `/tasks/{id}` | 태스크 수정 |
+| `PUT` | `/tasks/batch` | 태스크 일괄 수정 (Batch API) |
+| `DELETE` | `/tasks/{id}` | 태스크 삭제 |
+| `GET` | `/groups` | 그룹 목록 조회 |
+| `POST` | `/groups` | 그룹 생성 |
+| `GET` | `/connections` | 연결선 목록 조회 |
+| `POST` | `/connections` | 연결선 생성 |
+
+### C. Troubleshooting
+
+**문제: 개발 서버 실행 시 모듈을 찾을 수 없음**
 
 ```bash
-# API 서버 주소
-NEXT_PUBLIC_API_URL=http://localhost:9000/api
-
-# WebSocket 서버 주소 (음성 채팅 시그널링)
-NEXT_PUBLIC_WS_URL=ws://localhost:9000
-
-# Mock 모드 (개발용) - true면 백엔드 없이 UI 개발 가능
-NEXT_PUBLIC_USE_MOCK=false
-
-# 선택 사항
-NEXT_PUBLIC_FILE_UPLOAD_MAX_SIZE=10485760  # 10MB
+# node_modules 삭제 후 재설치
+rm -rf node_modules package-lock.json
+npm install
 ```
 
-### 7.2 TypeScript 설정 (`tsconfig.json`)
-
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "paths": {
-      "@/*": ["./*"]
-    }
-  }
-}
-```
-
-### 7.3 Tailwind 설정 (`app/globals.css`)
-
-```css
-@import "tailwindcss";
-
-:root {
-    --bg-primary: #f5f5f7;
-    --accent: #0071e3;
-    --domo-primary: #3b82f6;
-    --domo-highlight: #8b5cf6;
-}
-
-.dark {
-    --bg-primary: #000000;
-    --accent: #0a84ff;
-}
-
-/* Glass morphism */
-.glass-panel {
-    @apply bg-white/70 dark:bg-[#1c1c1e]/70 backdrop-blur-xl;
-}
-
-.glass-card {
-    @apply bg-white/60 dark:bg-[#1c1c1e]/60 backdrop-blur-lg
-    border border-white/20 dark:border-white/10;
-}
-```
-
----
-
-## 8. 배포
-
-### 8.1 프로덕션 빌드
+**문제: TypeScript 타입 에러**
 
 ```bash
-# 빌드
-npm run build
+# 타입 검사 실행
+npx tsc --noEmit
 
-# 로컬 프로덕션 테스트
-npm run start
+# 자동 수정 가능한 린트 에러 수정
+npm run lint -- --fix
 ```
 
-### 8.2 Vercel 배포
+**문제: 환경 변수가 적용되지 않음**
 
-```bash
-# Vercel CLI 설치
-npm i -g vercel
-
-# 배포
-vercel --prod
-```
-
-**환경 변수 설정** (Vercel Dashboard):
-- `NEXT_PUBLIC_API_URL`: 프로덕션 API 서버 주소
-- `NEXT_PUBLIC_WS_URL`: 프로덕션 WebSocket 서버 주소
-- `NEXT_PUBLIC_USE_MOCK`: `false`
+- `.env.local` 파일이 프로젝트 루트에 있는지 확인
+- `NEXT_PUBLIC_` 접두사가 있는지 확인 (클라이언트에서 접근하려면 필수)
+- 개발 서버 재시작 필요
 
 ---
 
-## 9. 트러블슈팅
-
-### Q: "Module not found: Can't resolve '@/src/...'"
-**A:** `tsconfig.json`의 `paths` 설정 확인
-```json
-{
-  "compilerOptions": {
-    "paths": { "@/*": ["./*"] }
-  }
-}
-```
-
-### Q: Import 경로가 헷갈림
-**A:** 다음 규칙을 따르세요:
-- 데이터/API → `@/src/models/...`
-- UI 컴포넌트 → `@/src/views/...`
-- 화면/Hooks → `@/src/containers/...`
-
-### Q: API 호출 시 CORS 에러
-**A:** 백엔드에서 CORS 허용 설정 필요
-```python
-# FastAPI 예시
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
-
-### Q: 쿠키가 전송되지 않음
-**A:** `credentials: 'include'` 확인 (`models/api/config.ts`의 `apiFetch`)
-
-### Q: Mock 모드가 적용 안 됨
-**A:** `.env.local` 파일 수정 후 **서버 재시작 필수**
-
-### Q: 음성 채팅이 연결되지 않음
-**A:**
-- WebSocket URL 확인 (`NEXT_PUBLIC_WS_URL`)
-- STUN 서버 접근 가능 여부 확인
-- 브라우저 마이크 권한 허용 확인
-
-### Q: View와 Screen 중 어디에 코드를 작성해야 하나요?
-**A:**
-- **View**: 순수 UI만 (props → 렌더링). 상태 관리 X, API 호출 X
-- **Screen**: 상태 관리, API 호출, 이벤트 핸들링, View 조합
-
-### Q: 그룹 위치가 새로고침 시 초기화됨
-**A:** `board.ts` API에서 백엔드가 반환하는 `localX`, `localY` 필드를 보존해야 함. 프론트에서 위치를 재계산하면 안 됨.
-
-### Q: 연결선 호버 피드백이 안 보임
-**A:** SVG z-index(z-10)가 카드(z-20)보다 낮아 가려짐. 호버된 끝점을 별도 레이어(z-30)에 렌더링하여 해결.
-
-### Q: 파일 드롭 시 브라우저가 파일을 열어버림
-**A:** 캔버스 컨테이너에 `onDragOver`, `onDrop` 이벤트에서 `e.preventDefault()` 호출 필요.
-
-### Q: 카드 클릭 시 의도치 않게 드래그가 시작됨
-**A:** 카드 드래그에 threshold(8px) 적용. 8px 이상 이동해야 드래그 시작, 그 전에 놓으면 클릭으로 처리.
-
----
-
-## 참고 문서
-
-- [Next.js App Router](https://nextjs.org/docs/app)
-- [React 19 Docs](https://react.dev/)
-- [Tailwind CSS v4](https://tailwindcss.com/docs)
-- [WebRTC API](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-
----
-
-## 라이선스
-
-MIT License
-
----
-
-## Contributors
-
-- Team DOMO
-
----
-
-## 개발 상태
-
-### 완료된 기능 (2025-01-25)
-- [x] 그룹 위치 백엔드 저장/복원
-- [x] 연결선 호버 시 끝점 피드백
-- [x] 우클릭 캔버스 팬
-- [x] 네이티브 파일 드롭 (카드/배경)
-- [x] 카드 드래그 threshold
-
-### 진행 중
-- [ ] 온라인 멤버 실시간 표시 (SSE 백엔드 대기)
-
-### 예정
-- [ ] 낙관적 UI 업데이트 (성능 최적화)
-
----
-
-**Last Updated**: 2025-01-25
+**Last Updated:** 2026-01-26  
+**Maintainer:** DOMO Frontend Team
