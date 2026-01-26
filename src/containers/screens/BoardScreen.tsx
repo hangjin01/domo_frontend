@@ -1,8 +1,7 @@
 // src/containers/screens/BoardScreen.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-<<<<<<< HEAD:src/containers/screens/BoardScreen.tsx
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Project, Task, Connection, Board, Group, ViewMode, Column, FileMetadata, Member } from '@/src/models/types';
 import { BoardCanvas } from '@/src/views/board';
 import { CalendarView } from '@/src/views/calendar';
@@ -12,16 +11,14 @@ import { TaskDetailModal } from '@/src/views/task';
 import { Mascot } from '@/src/views/common';
 import { Dock, FileListPanel } from '@/src/views/dock';
 import { CommunityBoard } from '@/src/views/community';
-=======
-import { Project, Task, Connection, Board, Group, ViewMode, Column } from '@/src/types';
-import { BoardCanvas } from './BoardCanvas';
-import { CalendarView, TimelineView, SettingsView } from './Views';
-import { TaskDetailModal } from '../ui/TaskDetailModal';
-import { Mascot } from '../ui/Mascot';
-import { Dock } from '../dock/Dock';
-import { CommunityBoard } from '../community/CommunityBoard';
-import { MOCK_MEMBERS } from '@/src/lib/api/mock-data';
->>>>>>> upstream/main:src/app/components/board/WorkspaceBoard.tsx
+import {
+    CARD_WIDTH,
+    CARD_HEIGHT,
+    GRID_PADDING,
+    GROUP_HEADER_HEIGHT,
+    GROUP_DEFAULT_WIDTH,
+    GROUP_DEFAULT_HEIGHT,
+} from '@/src/models/constants/grid';
 
 import {
     getTasks,
@@ -44,11 +41,7 @@ import {
 import { subscribeOnlineMembers } from '@/src/models/api/workspace';
 
 import {
-<<<<<<< HEAD:src/containers/screens/BoardScreen.tsx
     LayoutGrid, Calendar as CalendarIcon, StretchHorizontal, Settings,
-=======
-    Trello, Calendar as CalendarIcon, StretchHorizontal, Settings,
->>>>>>> upstream/main:src/app/components/board/WorkspaceBoard.tsx
     ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare
 } from 'lucide-react';
 
@@ -65,6 +58,12 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     const [boards, setBoards] = useState<Board[]>([{ id: 1, title: '메인 보드' }]);
     const [activeBoardId, setActiveBoardId] = useState<number>(1);
     const [groups, setGroups] = useState<Group[]>([]);
+
+    // Ref로 최신 tasks 유지 (클로저 문제 방지)
+    const tasksRef = useRef<Task[]>(tasks);
+    useEffect(() => {
+        tasksRef.current = tasks;
+    }, [tasks]);
 
     // 멤버 상태 (온라인 상태 포함)
     const [members, setMembers] = useState<Member[]>([]);
@@ -133,15 +132,9 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     }, [project.id, project.workspace_id]);
 
     // =========================================
-    // 컬럼 → Group 변환 상수
+    // 컬럼 → Group 변환 상수 (중앙화된 상수 사용)
     // =========================================
-    const CARD_WIDTH = 280;
-    const CARD_HEIGHT = 120;
-    const GROUP_PADDING = 40;
-    const GROUP_HEADER = 50;
     const COLUMN_GAP = 100;
-    const DEFAULT_GROUP_WIDTH = 320;
-    const DEFAULT_GROUP_HEIGHT = 200;
 
     // =========================================
     // 컬럼 → Group 변환 (백엔드 데이터 우선)
@@ -151,7 +144,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         tasksData: Task[]
     ): Group[] => {
         const sortedColumns = [...columnsData].sort((a, b) => a.order - b.order);
-        let fallbackX = GROUP_PADDING;
+        let fallbackX = GRID_PADDING;
 
         return sortedColumns.map((column) => {
             // 백엔드에 저장된 위치/크기가 있으면 그대로 사용
@@ -168,15 +161,15 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             if (hasBackendPosition) {
                 // 백엔드 데이터 우선 사용
                 groupX = column.localX ?? fallbackX;
-                groupY = column.localY ?? (GROUP_PADDING + GROUP_HEADER);
-                groupWidth = column.width ?? DEFAULT_GROUP_WIDTH;
-                groupHeight = column.height ?? DEFAULT_GROUP_HEIGHT;
+                groupY = column.localY ?? (GRID_PADDING + GROUP_HEADER_HEIGHT);
+                groupWidth = column.width ?? GROUP_DEFAULT_WIDTH;
+                groupHeight = column.height ?? GROUP_DEFAULT_HEIGHT;
             } else {
                 // 백엔드 데이터 없으면 순차 배치 (fallback)
                 groupX = fallbackX;
-                groupY = GROUP_PADDING + GROUP_HEADER;
-                groupWidth = DEFAULT_GROUP_WIDTH;
-                groupHeight = DEFAULT_GROUP_HEIGHT;
+                groupY = GRID_PADDING + GROUP_HEADER_HEIGHT;
+                groupWidth = GROUP_DEFAULT_WIDTH;
+                groupHeight = GROUP_DEFAULT_HEIGHT;
             }
 
             // 다음 컬럼 fallback 위치 계산
@@ -215,12 +208,15 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 getColumns(project.id),
             ]);
 
+            // 컬럼 + 카드 위치 기반으로 Groups 생성
+            const generatedGroups = generateGroupsFromColumns(columnsData, tasksData);
+
+            // 좌표 시스템: 절대 좌표 통일
+            // 백엔드에서 받은 x, y를 절대 좌표로 그대로 사용
+            // 변환 로직 제거 - 데이터 일관성 유지
             setTasks(tasksData);
             setConnections(connectionsData);
             setColumns(columnsData);
-
-            // 컬럼 + 카드 위치 기반으로 Groups 생성
-            const generatedGroups = generateGroupsFromColumns(columnsData, tasksData);
             setGroups(generatedGroups);
         } catch (err) {
             console.error('Failed to load project data:', err);
@@ -321,16 +317,17 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         }
     }, [project.id, getDefaultColumnId]);
 
-    // 태스크 업데이트 - 중복 방지 로직 추가
+    // 태스크 업데이트 - tasksRef로 최신 상태 참조
     const handleTaskUpdate = useCallback(async (taskId: number, updates: Partial<Task>): Promise<void> => {
-        const task = tasks.find(t => t.id === taskId);
+        // tasksRef에서 원본 task 찾기 (동기적으로 즉시 참조)
+        const originalTask = tasksRef.current.find(t => t.id === taskId);
 
-        if (!task) {
+        if (!originalTask) {
             console.error('Task not found:', taskId);
             return;
         }
 
-        // 낙관적 UI 업데이트 - 중복 방지
+        // 낙관적 UI 업데이트
         setTasks(prev => {
             const updated = prev.map(t => t.id === taskId ? { ...t, ...updates } : t);
             // 중복 제거
@@ -346,7 +343,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             console.error('Failed to update task:', err);
             // 롤백 - 원래 태스크로 복원
             setTasks(prev => {
-                const rolledBack = prev.map(t => t.id === taskId ? task : t);
+                const rolledBack = prev.map(t => t.id === taskId ? originalTask : t);
                 return rolledBack.filter((t, index, self) =>
                     index === self.findIndex(item => item.id === t.id)
                 );
@@ -355,15 +352,14 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         } finally {
             setIsSaving(false);
         }
-    }, [tasks]);
+    }, []);  // 의존성 비움 - tasksRef는 항상 최신
 
     // 태스크를 특정 컬럼으로 이동
     const handleMoveTaskToColumn = useCallback(async (taskId: number, columnId: number): Promise<void> => {
-        const task = tasks.find(t => t.id === taskId);
         const column = getColumnById(columnId);
 
-        if (!task || !column) {
-            console.error('Task or column not found');
+        if (!column) {
+            console.error('Column not found');
             return;
         }
 
@@ -371,14 +367,17 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             column_id: columnId,
             status: column.status,
         });
-    }, [tasks, getColumnById, handleTaskUpdate]);
+    }, [getColumnById, handleTaskUpdate]);
 
     // 태스크 삭제
     const handleTaskDelete = useCallback(async (taskId: number): Promise<void> => {
-        const previousTasks = [...tasks];
+        let previousTasks: Task[] = [];
 
-        // 낙관적 UI 업데이트
-        setTasks(prev => prev.filter(t => t.id !== taskId));
+        // setTasks 콜백 내에서 이전 상태 캡처
+        setTasks(prev => {
+            previousTasks = prev;
+            return prev.filter(t => t.id !== taskId);
+        });
 
         try {
             await deleteTask(taskId);
@@ -388,7 +387,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             setTasks(previousTasks);
             throw err;
         }
-    }, [tasks]);
+    }, []);  // 의존성 비움
 
     // =========================================
     // 연결선 핸들러
@@ -420,8 +419,15 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         }
     }, [project.id]);
 
+    // Ref로 connections 최신 상태 유지 (낙관적 업데이트 롤백용)
+    const connectionsRef = useRef(connections);
+    useEffect(() => {
+        connectionsRef.current = connections;
+    }, [connections]);
+
     const handleConnectionDelete = useCallback(async (connectionId: number): Promise<void> => {
-        const previousConnections = [...connections];
+        // 롤백용 스냅샷을 ref에서 캡처 (의존성 제거)
+        const previousConnections = [...connectionsRef.current];
 
         setConnections(prev => prev.filter(c => c.id !== connectionId));
 
@@ -432,11 +438,12 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             setConnections(previousConnections);
             throw err;
         }
-    }, [project.id, connections]);
+    }, [project.id]); // connections 의존성 제거
 
     const handleConnectionUpdate = useCallback(async (connectionId: number, updates: Partial<Connection>) => {
-        // 낙관적 업데이트 (Optimistic Update)
-        const previousConnections = [...connections];
+        // 롤백용 스냅샷을 ref에서 캡처
+        const previousConnections = [...connectionsRef.current];
+        
         setConnections(prev => prev.map(c =>
             c.id === connectionId ? { ...c, ...updates } : c
         ));
@@ -448,7 +455,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             // 실패 시 롤백
             setConnections(previousConnections);
         }
-    }, [connections]);
+    }, []); // connections 의존성 제거
 
     // =========================================
     // 파일 드롭 핸들러
@@ -471,15 +478,13 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     const handleNativeFileDrop = useCallback(async (cardId: number, files: File[]) => {
         setUploadingCardId(cardId);
         try {
-            for (const file of files) {
-                // 1. 파일 업로드
+            // 파일 업로드 및 카드 연결을 병렬로 처리
+            await Promise.all(files.map(async (file) => {
                 const uploadedFile = await uploadFile(project.id, file);
-
-                // 2. 카드에 연결
                 await attachFileToCard(cardId, uploadedFile.id);
-            }
+            }));
 
-            // 3. 데이터 리로드
+            // 데이터 리로드
             const updatedTasks = await getTasks(project.id);
             setTasks(updatedTasks);
         } catch (err) {
@@ -492,9 +497,8 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     // 배경에 파일 드롭 시 프로젝트 파일로 업로드
     const handleBackgroundFileDrop = useCallback(async (files: File[]) => {
         try {
-            for (const file of files) {
-                await uploadFile(project.id, file);
-            }
+            // 파일 업로드를 병렬로 처리
+            await Promise.all(files.map(file => uploadFile(project.id, file)));
 
             // 파일 패널 열기 + 새로고침 트리거
             setShowFilePanel(true);
@@ -601,50 +605,36 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         setGroups(newGroups);
     }, [groups, columns, project.id]);
 
-    // 그룹 이동 핸들러 - 그룹의 위치와 parent_id만 업데이트
-    // 중요: 그룹 이동 시 내부 카드들의 column_id는 변경하지 않음!
-    // 카드의 column_id는 카드를 직접 드래그해서 분리할 때만 변경됨
+    // =========================================
+    // 그룹 이동 핸들러 (핵심 재설계!)
+    // =========================================
+    // 새로운 좌표 시스템:
+    // - 그룹에 속한 카드의 x, y = 그룹 내 상대 좌표
+    // - 렌더링 시 절대 좌표 = group.x + card.x
+    // - 그룹 이동 시 그룹 위치만 서버에 저장 (1회 API)
+    // - 카드 위치는 그룹 내에서 드래그할 때만 변경
+    // =========================================
     const handleGroupMove = useCallback(async (groupId: number, newX: number, newY: number) => {
         const group = groups.find(g => g.id === groupId);
         if (!group) return;
 
-        // 그룹 위치 업데이트 (로컬 상태)
+        // 로컬 상태만 업데이트 (카드 위치 변경 없음!)
+        // 카드의 x, y는 그룹 내 상대 좌표이므로 그룹 이동과 무관
         setGroups(prev => prev.map(g =>
             g.id === groupId ? { ...g, x: newX, y: newY } : g
         ));
 
-        // 그룹 내 카드들의 위치만 업데이트 (column_id는 변경하지 않음!)
-        const groupTasks = tasks.filter(t => t.column_id === groupId);
-
-        // 이동량 계산
-        const deltaX = newX - group.x;
-        const deltaY = newY - group.y;
-
-        // 그룹 내 카드들 위치 업데이트 (column_id는 유지!)
-        for (const task of groupTasks) {
-            const newTaskX = (task.x || 0) + deltaX;
-            const newTaskY = (task.y || 0) + deltaY;
-
-            // 위치만 업데이트, column_id는 변경하지 않음!
-            const updates: Partial<Task> = {
-                x: newTaskX,
-                y: newTaskY,
-            };
-
-            try {
-                await handleTaskUpdate(task.id, updates);
-            } catch (err) {
-                console.error('Failed to update task position in group:', task.id, err);
-            }
-        }
-
-        // 백엔드에 그룹 위치 저장
+        // 백엔드에 그룹 위치만 저장 (1회 API 호출)
         try {
             await updateGroup(groupId, { x: newX, y: newY });
         } catch (err) {
             console.error('Failed to save group position:', err);
+            // 롤백: 원래 위치로 복원
+            setGroups(prev => prev.map(g =>
+                g.id === groupId ? { ...g, x: group.x, y: group.y } : g
+            ));
         }
-    }, [groups, tasks, handleTaskUpdate]);
+    }, [groups]);
 
     // 그룹 삭제 핸들러
     const handleGroupDelete = useCallback(async (groupId: number) => {

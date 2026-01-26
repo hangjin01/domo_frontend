@@ -173,7 +173,7 @@ export async function attachFileToCard(
   }
 
   // 백엔드: POST /api/cards/{card_id}/files/{file_id}
-  await apiFetch<any>(`/cards/${cardId}/files/${fileId}`, {
+  await apiFetch<void>(`/cards/${cardId}/files/${fileId}`, {
     method: 'POST',
   });
 }

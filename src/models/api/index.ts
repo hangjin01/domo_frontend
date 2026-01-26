@@ -61,6 +61,8 @@ export {
   createTask,
   updateTask,
   deleteTask,
+  // Batch API
+  batchUpdateCardPositions,
   // 댓글
   getCardComments,
   createCardComment,
@@ -82,6 +84,7 @@ export {
   updateNode,
   deleteNode,
 } from './board';
+export type { BatchCardPositionUpdate } from './board';
 
 <<<<<<< HEAD:src/models/api/index.ts
 // 게시판 API

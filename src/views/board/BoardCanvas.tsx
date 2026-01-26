@@ -4,12 +4,64 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMe
 import { Task, Connection, Board, Group, Column } from '@/src/models/types';
 import { TaskCard } from '@/src/views/task/TaskCard';
 import { SortableGroup, DropPlaceholder, SortableCard } from '@/src/views/board/SortableGroup';
-import { useSortableGrid, GridConfig } from '@/src/containers/hooks/board/useSortableGrid';
-import { deleteTask } from '@/src/models/api';
+import { SyncStatusIndicator, SyncErrorToast } from '@/src/views/board/SyncStatusIndicator';
+import { useSortableGrid } from '@/src/containers/hooks/board/useSortableGrid';
+import {
+    usePendingSync,
+    PendingChange,
+    BatchChangeItem,
+    BatchCardPositionPayload,
+} from '@/src/containers/hooks/common/usePendingSync';
+import { deleteTask, updateTask, batchUpdateCardPositions } from '@/src/models/api';
+import {
+    CARD_WIDTH,
+    CARD_HEIGHT,
+    GRID_GAP,
+    GRID_PADDING,
+    GROUP_HEADER_HEIGHT,
+    DRAG_THRESHOLD,
+    DEFAULT_GRID_CONFIG,
+    GridConfig,
+    indexToAbsolutePosition,
+    isPointInGroup,
+} from '@/src/models/constants/grid';
+import {
+    calculateGroupCreation,
+    calculateLayoutAfterAddCard,
+    calculateGroupLayout,
+} from '@/src/models/utils/groupLayout';
 import {
     Plus, LayoutDashboard, ChevronDown, Check, Pencil, X, MousePointer2, Layers, Spline, Activity, Trash2, FilePlus, Clipboard,
     Grid, Sun, Moon, Loader2
 } from 'lucide-react';
+
+// 카드 위치 변경 페이로드 타입
+interface CardPositionPayload {
+    taskId: number;
+    x: number;
+    y: number;
+    column_id?: number | null;
+}
+
+// 카드 위치 스냅샷 타입
+interface CardPositionSnapshot {
+    x: number;
+    y: number;
+    column_id: number | undefined;
+}
+
+// 그룹 위치 변경 페이로드 타입
+interface GroupPositionPayload {
+    groupId: number;
+    x: number;
+    y: number;
+}
+
+// 그룹 위치 스냅샷 타입
+interface GroupPositionSnapshot {
+    x: number;
+    y: number;
+}
 
 interface BoardCanvasProps {
     tasks: Task[];
@@ -21,7 +73,6 @@ interface BoardCanvasProps {
     onTaskUpdate?: (taskId: number, updates: Partial<Task>) => Promise<void>;
     onTaskDelete?: (taskId: number) => Promise<void>;
     onMoveTaskToColumn?: (taskId: number, columnId: number) => Promise<void>;
-    // [수정] handle 정보 추가
     onConnectionCreate: (from: number, to: number, sourceHandle?: 'left' | 'right', targetHandle?: 'left' | 'right') => void;
     onConnectionDelete: (id: number) => void;
     onConnectionUpdate: (id: number, updates: Partial<Connection>) => void | Promise<void>;
@@ -47,16 +98,6 @@ const COLUMN_WIDTH = 350;
 const COLUMN_GAP = 30;
 const COLUMN_START_X = 50;
 
-// 그리드 설정
-const GRID_CONFIG: Partial<GridConfig> = {
-    columns: 1,           // 세로 리스트
-    cardWidth: 260,
-    cardHeight: 120,
-    gap: 12,
-    padding: 20,
-    headerHeight: 50,
-};
-
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                                             tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onFileDropOnCard, onNativeFileDrop, onBackgroundFileDrop
                                                         }) => {
@@ -69,6 +110,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const mousePosRef = useRef({ x: 0, y: 0 });
     const [lines, setLines] = useState<React.ReactElement[]>([]);
     const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
+
+    // ============================================
+    // [최적화] connections를 Ref로 관리
+    // useCallback 의존성에서 제거하여 불필요한 함수 재생성 방지
+    // (tasksRef는 이미 아래에서 선언됨)
+    // ============================================
+    const connectionsRef = useRef<Connection[]>(connections);
+
+    // props 변경 시 ref 동기화
+    useEffect(() => {
+        connectionsRef.current = connections;
+    }, [connections]);
 
     // 파일 드래그 드롭 상태
     const [fileDropTargetCardId, setFileDropTargetCardId] = useState<number | null>(null);
@@ -114,7 +167,6 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const [editBoardName, setEditBoardName] = useState('');
 
     const [isCreatingTask, setIsCreatingTask] = useState(false);
-    const [isSavingPosition, setIsSavingPosition] = useState(false);
     const [isDeletingTask, setIsDeletingTask] = useState(false);
 
     // 우클릭 팬 상태
@@ -142,32 +194,190 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         cardRect: DOMRect;
     } | null>(null);
 
-    const CARD_DRAG_THRESHOLD = 8; // 8px 이상 이동해야 드래그 시작
+    // 자유 카드 드래그 시 타겟 그룹 하이라이트
+    const [freeCardTargetGroupId, setFreeCardTargetGroupId] = useState<number | null>(null);
 
+    // ============================================
+    // Refs로 최신 상태 유지 (클로저 문제 방지)
+    // ============================================
+    const tasksRef = useRef(tasks);
+    const groupsRef = useRef(groups);
+
+    useEffect(() => {
+        tasksRef.current = tasks;
+    }, [tasks]);
+
+    useEffect(() => {
+        groupsRef.current = groups;
+    }, [groups]);
+
+    // ============================================
+    // Optimistic UI: 카드 동기화 큐 관리 (Batch 모드)
+    // ============================================
+    const {
+        syncStatus: cardSyncStatus,
+        pendingCount: cardPendingCount,
+        lastError: cardLastError,
+        queueChange: queueCardChange,
+        queueBatchChange: queueBatchCardChange,
+        retryFailed: retryCardFailed,
+        clearError: clearCardError,
+        flush: flushCardChanges,
+    } = usePendingSync<CardPositionPayload, CardPositionSnapshot>({
+        debounceMs: 400, // 연속 드래그 대응을 위해 400ms로 변경
+        maxRetries: 3,
+        onRollback: (change: PendingChange<CardPositionPayload, CardPositionSnapshot>) => {
+            // 단건 실패 시 이전 상태로 롤백 (ref를 통해 최신 tasks 참조)
+            const { entityId, snapshot } = change;
+            onTasksUpdate(tasksRef.current.map(t =>
+                t.id === entityId
+                    ? { ...t, x: snapshot.x, y: snapshot.y, column_id: snapshot.column_id }
+                    : t
+            ));
+        },
+        onBatchRollback: (items: BatchChangeItem[]) => {
+            // Batch 실패 시 모든 카드를 이전 상태로 롤백
+            console.log('[BoardCanvas] Batch 롤백 실행, 카드 수:', items.length);
+            onTasksUpdate(tasksRef.current.map(t => {
+                const item = items.find(i => i.entityId === t.id);
+                if (item) {
+                    return {
+                        ...t,
+                        x: item.snapshot.x,
+                        y: item.snapshot.y,
+                        column_id: item.snapshot.column_id,
+                    };
+                }
+                return t;
+            }));
+        },
+        batchApiCall: async (payloads: BatchCardPositionPayload[]) => {
+            // Batch API 호출
+            const updates = payloads.map(p => ({
+                id: p.taskId,
+                x: p.x,
+                y: p.y,
+                column_id: p.column_id,
+            }));
+            await batchUpdateCardPositions(updates);
+        },
+    });
+
+    // ============================================
+    // Optimistic UI: 그룹 동기화 큐 관리
+    // ============================================
+    const {
+        syncStatus: groupSyncStatus,
+        pendingCount: groupPendingCount,
+        lastError: groupLastError,
+        queueChange: queueGroupChange,
+        retryFailed: retryGroupFailed,
+        clearError: clearGroupError,
+        flush: flushGroupChanges,
+    } = usePendingSync<GroupPositionPayload, GroupPositionSnapshot>({
+        debounceMs: 400, // 연속 드래그 대응을 위해 400ms로 변경
+        maxRetries: 3,
+        onRollback: (change: PendingChange<GroupPositionPayload, GroupPositionSnapshot>) => {
+            // 실패 시 이전 상태로 롤백 (ref를 통해 최신 groups 참조)
+            const { entityId, snapshot } = change;
+            onGroupsUpdate(groupsRef.current.map(g =>
+                g.id === entityId
+                    ? { ...g, x: snapshot.x, y: snapshot.y }
+                    : g
+            ));
+        },
+    });
+
+    // 통합 동기화 상태 (카드 + 그룹)
+    // 우선순위: error > syncing > success > pending > idle
+    const syncStatus = cardSyncStatus === 'error' || groupSyncStatus === 'error'
+        ? 'error'
+        : cardSyncStatus === 'syncing' || groupSyncStatus === 'syncing'
+            ? 'syncing'
+            : cardSyncStatus === 'success' || groupSyncStatus === 'success'
+                ? 'success'
+                : cardSyncStatus === 'pending' || groupSyncStatus === 'pending'
+                    ? 'pending'
+                    : 'idle';
+    const pendingCount = cardPendingCount + groupPendingCount;
+    const lastError = cardLastError || groupLastError;
+    const retryFailed = () => { retryCardFailed(); retryGroupFailed(); };
+    const clearError = () => { clearCardError(); clearGroupError(); };
+
+    // 에러 토스트 표시 여부
+    const [showErrorToast, setShowErrorToast] = useState(false);
+    useEffect(() => {
+        if (lastError) {
+            setShowErrorToast(true);
+        }
+    }, [lastError]);
+
+    // ============================================
     // useSortableGrid 훅 사용 - 그룹 내 카드 정렬용
+    // ============================================
     const {
         dragContext,
         dropPreview,
         cardPositions,
         isDragging: isSortableDragging,
+        highlightedGroupId,
         startDrag,
         updateDrag,
         endDrag,
         cancelDrag,
         isTaskBeingDragged,
         getCardTransition,
+        isGroupHighlighted,
         gridConfig,
     } = useSortableGrid(
         tasks,
         groups,
         onTasksUpdate,
-        async (taskId, groupId, newIndex) => {
-            // 백엔드에 카드 이동 저장
-            if (onTaskUpdate) {
-                await onTaskUpdate(taskId, { column_id: groupId ?? undefined });
+        // 드래그 종료 콜백: Batch API 저장 처리
+        (result) => {
+            // no-change는 콜백이 호출되지 않음 (useSortableGrid에서 필터링)
+
+            // Batch 변경 항목 수집
+            const batchItems: BatchChangeItem[] = [];
+
+            // 1. 드래그한 카드 추가
+            batchItems.push({
+                entityId: result.taskId,
+                payload: {
+                    taskId: result.taskId,
+                    x: result.newX,
+                    y: result.newY,
+                    column_id: result.newGroupId,
+                },
+                snapshot: result.snapshot,
+            });
+
+            // 2. 영향받은 다른 카드들도 추가 (그룹 내 재정렬 시)
+            // 중요: affectedCards에는 이제 원본 좌표(originalX, originalY)가 포함됨
+            if (result.affectedCards) {
+                for (const affected of result.affectedCards) {
+                    batchItems.push({
+                        entityId: affected.taskId,
+                        payload: {
+                            taskId: affected.taskId,
+                            x: affected.newX,
+                            y: affected.newY,
+                            column_id: affected.originalColumnId ?? null,
+                        },
+                        snapshot: {
+                            x: affected.originalX,
+                            y: affected.originalY,
+                            column_id: affected.originalColumnId,
+                        },
+                    });
+                }
             }
+
+            // 3. Batch 큐에 추가 (단일 API 호출로 처리됨)
+            console.log('[BoardCanvas] Batch 큐 추가, 카드 수:', batchItems.length);
+            queueBatchCardChange(batchItems);
         },
-        GRID_CONFIG
+        DEFAULT_GRID_CONFIG
     );
 
     // 드래그 중인 카드의 현재 위치 (절대 좌표)
@@ -451,7 +661,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
 
         setLines(newLines);
-    }, [connections, connectionDraft, connectionReconnect, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath]);
+    }, [connections, connectionDraft, connectionReconnect, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath, hoveredEndpoint]);
 
     useLayoutEffect(() => {
         updateConnections();
@@ -463,43 +673,155 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         return () => { window.removeEventListener('resize', handleResize); cancelAnimationFrame(animationFrameId); };
     }, [updateConnections]);
 
+    // ============================================
+    // [최적화] 새 카드 생성 핸들러
+    // tasksRef를 사용하여 tasks 의존성 제거 → 불필요한 함수 재생성 방지
+    // ============================================
+    const handleCreateNewTask = useCallback(async (x: number, y: number) => {
+        if (isCreatingTask) return;
+        // 카드 생성 시 자동으로 그룹에 귀속시키지 않음 (자유 배치)
+        const newTaskData: Partial<Task> = {
+            title: "새로운 카드",
+            status: "todo",
+            x, y,
+            tags: [],
+            boardId: activeBoardId,
+            column_id: undefined,  // undefined = 자유 배치 (그룹에 귀속 안 함)
+        };
+
+        if (onTaskCreate) {
+            setIsCreatingTask(true);
+            const tempTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
+            // [최적화] tasksRef.current 사용
+            onTasksUpdate([...tasksRef.current, tempTask]);
+            try {
+                const savedTask = await onTaskCreate(newTaskData);
+                onTasksUpdate(tasksRef.current.filter(t => t.id !== tempTask.id).concat(savedTask));
+                onTaskSelect(savedTask);
+            } catch {
+                onTasksUpdate(tasksRef.current.filter(t => t.id !== tempTask.id));
+            } finally {
+                setIsCreatingTask(false);
+            }
+        } else {
+            const newTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
+            // [최적화] tasksRef.current 사용
+            onTasksUpdate([...tasksRef.current, newTask]);
+            onTaskSelect(newTask);
+        }
+    }, [isCreatingTask, onTaskCreate, onTasksUpdate, activeBoardId, onTaskSelect]); // [최적화] tasks 의존성 제거
+
+    // ============================================
+    // [최적화] 선택된 카드 삭제 핸들러
+    // tasksRef, connectionsRef를 사용하여 의존성 제거 → 불필요한 함수 재생성 방지
+    // ============================================
+    const handleDeleteSelectedTasks = useCallback(async () => {
+        if (selectedTaskIds.size === 0 || isDeletingTask) return;
+        const idsToDelete = Array.from(selectedTaskIds);
+        setIsDeletingTask(true);
+        // [최적화] tasksRef.current 사용
+        const previousTasks = [...tasksRef.current];
+        onTasksUpdate(tasksRef.current.filter(t => !selectedTaskIds.has(t.id)));
+        // [최적화] connectionsRef.current 사용
+        idsToDelete.forEach(id => {
+            connectionsRef.current.filter(c => c.from === id || c.to === id).forEach(c => onConnectionDelete(c.id));
+        });
+        setSelectedTaskIds(new Set());
+        try {
+            await Promise.all(idsToDelete.map(async (id) => {
+                try {
+                    if (onTaskDelete) await onTaskDelete(id);
+                    else await deleteTask(id);
+                } catch {
+                    // 개별 삭제 실패는 무시
+                }
+            }));
+        } catch {
+            onTasksUpdate(previousTasks);
+        } finally {
+            setIsDeletingTask(false);
+            setBackgroundMenu(null);
+        }
+    }, [selectedTaskIds, isDeletingTask, onTasksUpdate, onConnectionDelete, onTaskDelete]); // [최적화] tasks, connections 의존성 제거
+
     useEffect(() => {
         const handleKeyDown = (evt: KeyboardEvent) => {
             const key = evt.key.toLowerCase();
             if (key === 'c' && selectedTaskIds.size > 0) {
                 evt.preventDefault();
-                const selectedTasks = tasks.filter(t => selectedTaskIds.has(t.id));
+                // [최적화] tasksRef.current 사용
+                const selectedTasks = tasksRef.current.filter(t => selectedTaskIds.has(t.id));
                 if (selectedTasks.length === 0) return;
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                selectedTasks.forEach(t => {
-                    minX = Math.min(minX, t.x || 0);
-                    minY = Math.min(minY, t.y || 0);
-                    maxX = Math.max(maxX, (t.x || 0) + 280);
-                    maxY = Math.max(maxY, (t.y || 0) + 200);
-                });
-                const padding = 40;
+
+                // =========================================
+                // 구조적 개편: 중앙화된 레이아웃 계산 사용
+                // =========================================
+
+                // 1. 그룹 생성 레이아웃 계산 (크기 + 카드 위치)
+                const layoutResult = calculateGroupCreation(
+                    selectedTasks.map(t => ({ id: t.id, x: t.x, y: t.y })),
+                    gridConfig
+                );
+
+                // 2. 새 그룹 생성
                 const newGroupId = Date.now();
                 const newGroup: Group = {
                     id: newGroupId,
                     title: 'Group',
-                    x: minX - padding,
-                    y: minY - padding,
-                    width: maxX - minX + (padding * 2),
-                    height: maxY - minY + (padding * 2),
+                    x: layoutResult.group.x,
+                    y: layoutResult.group.y,
+                    width: layoutResult.group.width,
+                    height: layoutResult.group.height,
                     projectId: activeBoardId,
                     parentId: null,
                     depth: 0,
                 };
                 onGroupsUpdate([...groups, newGroup]);
 
-                // 선택된 카드들의 column_id를 새 그룹으로 설정
-                const updatedTasks = tasks.map(t => {
+                // 3. 카드들의 column_id 및 좌표를 그리드 레이아웃에 맞게 업데이트
+                const cardPositionMap = new Map(
+                    layoutResult.cardPositions.map(cp => [cp.taskId, { x: cp.x, y: cp.y }])
+                );
+
+                // [최적화] tasksRef.current 사용
+                const updatedTasks = tasksRef.current.map(t => {
                     if (selectedTaskIds.has(t.id)) {
-                        return { ...t, column_id: newGroupId };
+                        const newPos = cardPositionMap.get(t.id);
+                        return {
+                            ...t,
+                            column_id: newGroupId,
+                            x: newPos?.x ?? t.x,
+                            y: newPos?.y ?? t.y,
+                        };
                     }
                     return t;
                 });
                 onTasksUpdate(updatedTasks);
+
+                // 4. Batch API로 카드 위치 동기화
+                const batchItems: BatchChangeItem[] = layoutResult.cardPositions.map(cp => {
+                    const originalTask = selectedTasks.find(t => t.id === cp.taskId);
+                    return {
+                        entityId: cp.taskId,
+                        payload: {
+                            taskId: cp.taskId,
+                            x: cp.x,
+                            y: cp.y,
+                            column_id: newGroupId,
+                        },
+                        snapshot: {
+                            x: originalTask?.x ?? 0,
+                            y: originalTask?.y ?? 0,
+                            column_id: originalTask?.column_id,
+                        },
+                    };
+                });
+
+                if (batchItems.length > 0) {
+                    console.log('[BoardCanvas] 그룹 생성 - Batch 큐 추가, 카드 수:', batchItems.length);
+                    queueBatchCardChange(batchItems);
+                }
+
                 setSelectedTaskIds(new Set());
             }
             if (key === 'n') {
@@ -521,7 +843,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedTaskIds, tasks, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag]);
+    }, [selectedTaskIds, activeBoardId, groups, onGroupsUpdate, onTasksUpdate, cancelDrag, gridConfig, queueBatchCardChange, handleCreateNewTask, handleDeleteSelectedTasks]); // [최적화] tasks 의존성 제거 (tasksRef 사용)
 
     useEffect(() => {
         const handleClickOutside = (evt: MouseEvent) => {
@@ -536,51 +858,28 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         return () => window.removeEventListener('mousedown', handleClickOutside);
     }, [editingGroupId]);
 
-    const handleCreateNewTask = async (x: number, y: number) => {
-        if (isCreatingTask) return;
-        // 카드 생성 시 자동으로 그룹에 귀속시키지 않음 (자유 배치)
-        const newTaskData: Partial<Task> = {
-            title: "새로운 카드",
-            status: "todo",
-            x, y,
-            tags: [],
-            boardId: activeBoardId,
-            column_id: null,  // 명시적 null = 자유 배치 (그룹에 귀속 안 함)
-        };
+    // Optimistic UI: 카드 위치 저장 (큐에 등록, 즉시 반환)
+    const saveTaskPosition = useCallback((taskId: number, newX: number, newY: number, snapshot: CardPositionSnapshot) => {
+        if (!onTaskUpdate) {
+            console.warn('[Optimistic] saveTaskPosition: onTaskUpdate가 없음');
+            return;
+        }
 
-        if (onTaskCreate) {
-            setIsCreatingTask(true);
-            const tempTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
-            onTasksUpdate([...tasks, tempTask]);
-            try {
-                const savedTask = await onTaskCreate(newTaskData);
-                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id).concat(savedTask));
-                onTaskSelect(savedTask);
-            } catch (err) {
-                
-                onTasksUpdate(tasks.filter(t => t.id !== tempTask.id));
-            } finally {
-                setIsCreatingTask(false);
+        console.log('[Optimistic] saveTaskPosition 큐 등록:', { taskId, newX, newY });
+
+        // API 호출을 큐에 등록
+        queueCardChange(
+            'card-position',
+            taskId,
+            { taskId, x: newX, y: newY },
+            snapshot,
+            async (payload) => {
+                console.log('[Optimistic] saveTaskPosition API 호출:', payload);
+                await onTaskUpdate(payload.taskId, { x: payload.x, y: payload.y });
+                console.log('[Optimistic] saveTaskPosition API 완료:', payload.taskId);
             }
-        } else {
-            const newTask: Task = { ...newTaskData, id: Date.now(), status: 'todo', x, y, boardId: activeBoardId } as Task;
-            onTasksUpdate([...tasks, newTask]);
-            onTaskSelect(newTask);
-        }
-    };
-
-    const saveTaskPosition = async (taskId: number, x: number, y: number) => {
-        if (!onTaskUpdate) return;
-        const updates: Partial<Task> = { x, y };
-        setIsSavingPosition(true);
-        try {
-            await onTaskUpdate(taskId, updates);
-        } catch (err) {
-            
-        } finally {
-            setIsSavingPosition(false);
-        }
-    };
+        );
+    }, [onTaskUpdate, queueCardChange]);
 
     const handleDeleteTask = async (taskId: number) => {
         if (isDeletingTask) return;
@@ -592,37 +891,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             if (onTaskDelete) await onTaskDelete(taskId);
             else await deleteTask(taskId);
         } catch (err) {
-            
+
             onTasksUpdate(previousTasks);
             alert('카드 삭제에 실패했습니다.');
-        } finally {
-            setIsDeletingTask(false);
-            setBackgroundMenu(null);
-        }
-    };
-
-    const handleDeleteSelectedTasks = async () => {
-        if (selectedTaskIds.size === 0 || isDeletingTask) return;
-        const idsToDelete = Array.from(selectedTaskIds);
-        setIsDeletingTask(true);
-        const previousTasks = [...tasks];
-        onTasksUpdate(tasks.filter(t => !selectedTaskIds.has(t.id)));
-        idsToDelete.forEach(id => {
-            connections.filter(c => c.from === id || c.to === id).forEach(c => onConnectionDelete(c.id));
-        });
-        setSelectedTaskIds(new Set());
-        try {
-            await Promise.all(idsToDelete.map(async (id) => {
-                try {
-                    if (onTaskDelete) await onTaskDelete(id);
-                    else await deleteTask(id);
-                } catch (err) {
-                    
-                }
-            }));
-        } catch (err) {
-            
-            onTasksUpdate(previousTasks);
         } finally {
             setIsDeletingTask(false);
             setBackgroundMenu(null);
@@ -701,6 +972,17 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
 
         if (group) {
+            // =========================================
+            // 이벤트 위임 명확화: 카드 클릭 시 그룹 드래그 방지
+            // event.target이 카드(TaskCard) 또는 그 내부 요소인지 체크
+            // =========================================
+            const targetEl = e.target as HTMLElement;
+            const isCardClick = targetEl.closest('[id^="task-"]');
+            if (isCardClick) {
+                // 카드 클릭이면 그룹 드래그 무시 - 카드의 onPointerDown이 처리
+                return;
+            }
+
             e.stopPropagation();
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 
@@ -812,8 +1094,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         setBackgroundMenu(null);
     };
 
-    // 연결선 재연결 드래그 종료 처리
-    const handleConnectionReconnectEnd = async (targetCardId: number, targetHandle: 'left' | 'right') => {
+    // 연결선 재연결 드래그 종료 처리 (Optimistic: await 없음)
+    const handleConnectionReconnectEnd = (targetCardId: number, targetHandle: 'left' | 'right') => {
         if (!connectionReconnect) return;
 
         // 같은 카드에 재연결하는 것은 무시 (자기 자신에게 연결 불가)
@@ -828,22 +1110,19 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             return;
         }
 
-        try {
-            if (connectionReconnect.draggingEnd === 'source') {
-                // source를 새 카드로 변경
-                await onConnectionUpdate(connectionReconnect.connectionId, {
-                    from: targetCardId,
-                    sourceHandle: targetHandle,
-                });
-            } else {
-                // target을 새 카드로 변경
-                await onConnectionUpdate(connectionReconnect.connectionId, {
-                    to: targetCardId,
-                    targetHandle: targetHandle,
-                });
-            }
-        } catch (err) {
-            
+        // Optimistic: 비동기 대기 없이 호출 (상위 컴포넌트에서 상태 관리)
+        if (connectionReconnect.draggingEnd === 'source') {
+            // source를 새 카드로 변경
+            onConnectionUpdate(connectionReconnect.connectionId, {
+                from: targetCardId,
+                sourceHandle: targetHandle,
+            });
+        } else {
+            // target을 새 카드로 변경
+            onConnectionUpdate(connectionReconnect.connectionId, {
+                to: targetCardId,
+                targetHandle: targetHandle,
+            });
         }
 
         setConnectionReconnect(null);
@@ -885,7 +1164,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             const deltaY = e.clientY - pendingCardDrag.startY;
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-            if (distance >= CARD_DRAG_THRESHOLD) {
+            if (distance >= DRAG_THRESHOLD) {
                 // threshold 초과 시 실제 드래그 시작
                 activatePendingDrag(e.clientX, e.clientY);
             }
@@ -914,6 +1193,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             });
             setSelectedTaskIds(newSelectedIds);
         } else if (groupDragState) {
+            // =========================================
+            // 그룹 드래그 - 절대 좌표 시스템!
+            // 그룹 이동 시 그룹에 속한 카드들도 동일한 delta만큼 이동
+            // 카드의 x, y는 절대 좌표이므로 함께 업데이트 필요
+            // =========================================
             const deltaX = e.clientX - groupDragState.startX;
             const deltaY = e.clientY - groupDragState.startY;
             let newGroupX = groupDragState.initialGroupX + deltaX;
@@ -926,10 +1210,12 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             const effectiveDeltaX = newGroupX - groupDragState.initialGroupX;
             const effectiveDeltaY = newGroupY - groupDragState.initialGroupY;
 
+            // 그룹 위치 업데이트
             onGroupsUpdate(groups.map(g => {
                 if (g.id === groupDragState.id) {
                     return { ...g, x: newGroupX, y: newGroupY };
                 }
+                // 자식 그룹들도 함께 이동
                 const childGroup = groupDragState.containedChildGroups.find(cg => cg.id === g.id);
                 if (childGroup) {
                     return { ...g, x: childGroup.initialX + effectiveDeltaX, y: childGroup.initialY + effectiveDeltaY };
@@ -937,12 +1223,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 return g;
             }));
 
-            if (groupDragState.containedTaskIds.length > 0) {
-                onTasksUpdate(tasks.map(t => {
-                    const c = groupDragState.containedTaskIds.find(item => item.id === t.id);
-                    return c ? { ...t, x: c.initialX + effectiveDeltaX, y: c.initialY + effectiveDeltaY } : t;
-                }));
-            }
+            // 그룹에 속한 카드들도 동일한 delta만큼 이동 (절대 좌표 시스템)
+            onTasksUpdate(tasks.map(t => {
+                const containedTask = groupDragState.containedTaskIds.find(ct => ct.id === t.id);
+                if (containedTask) {
+                    return {
+                        ...t,
+                        x: containedTask.initialX + effectiveDeltaX,
+                        y: containedTask.initialY + effectiveDeltaY,
+                    };
+                }
+                return t;
+            }));
         } else if (freeDragState) {
             const deltaX = e.clientX - freeDragState.startX;
             const deltaY = e.clientY - freeDragState.startY;
@@ -953,6 +1245,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 newY = Math.round(newY / 20) * 20;
             }
             onTasksUpdate(tasks.map(t => t.id === freeDragState.id ? { ...t, x: newX, y: newY } : t));
+
+            // 자유 카드 드래그 시 그룹 하이라이트 처리
+            const cardCenterX = newX + gridConfig.cardWidth / 2;
+            const cardCenterY = newY + gridConfig.cardHeight / 2;
+            let targetGroup: Group | null = null;
+            for (const group of groups) {
+                if (isPointInGroup(cardCenterX, cardCenterY, group)) {
+                    targetGroup = group;
+                    break;
+                }
+            }
+            setFreeCardTargetGroupId(targetGroup?.id ?? null);
         } else if (connectionDraft) {
             setConnectionDraft(prev => prev ? { ...prev, currX: x, currY: y } : null);
         } else if (connectionReconnect) {
@@ -961,7 +1265,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
     };
 
-    const handlePointerUp = async (e: React.PointerEvent) => {
+    const handlePointerUp = (e: React.PointerEvent) => {
         // 카드 드래그 pending 상태 해제 (threshold 미달 = 단순 클릭, 아무 동작 안 함)
         if (pendingCardDrag) {
             setPendingCardDrag(null);
@@ -990,9 +1294,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             return;
         }
 
-        // SortableGrid 드래그 종료 - 현재 드래그 위치 전달
+        // SortableGrid 드래그 종료 - 현재 드래그 위치 전달 (비동기 대기 없음)
         if (dragContext) {
-            await endDrag(sortableDragPos ?? undefined);
+            endDrag(sortableDragPos ?? undefined);
             setSortableDragPos(null);
             return;
         }
@@ -1001,36 +1305,74 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (freeDragState) {
             const task = tasks.find(t => t.id === freeDragState.id);
             if (task && (task.x !== freeDragState.initialTaskX || task.y !== freeDragState.initialTaskY) && task.x !== undefined && task.y !== undefined) {
+                // 롤백용 스냅샷
+                const snapshot: CardPositionSnapshot = {
+                    x: freeDragState.initialTaskX,
+                    y: freeDragState.initialTaskY,
+                    column_id: task.column_id,
+                };
+
                 // 자유 배치 카드가 그룹 안에 드롭되면 column_id 설정
-                const targetGroup = groups.find(g => {
-                    const cardCenterX = task.x + 140; // 카드 중심점
-                    const cardCenterY = task.y + 60;
-                    return (
-                        cardCenterX >= g.x &&
-                        cardCenterX <= g.x + g.width &&
-                        cardCenterY >= g.y &&
-                        cardCenterY <= g.y + g.height
-                    );
-                });
+                const cardCenterX = task.x + gridConfig.cardWidth / 2;
+                const cardCenterY = task.y + gridConfig.cardHeight / 2;
+                let targetGroup: Group | null = null;
+                for (const g of groups) {
+                    if (isPointInGroup(cardCenterX, cardCenterY, g)) {
+                        targetGroup = g;
+                        break;
+                    }
+                }
 
                 if (targetGroup) {
-                    // 그룹 안에 드롭됨 - column_id 설정
+                    // =========================================
+                    // 자유 카드 → 그룹 드롭: 그리드 정렬 적용
+                    // 그룹 내 마지막 위치에 배치
+                    // =========================================
+                    const groupCards = tasks.filter(t => t.column_id === targetGroup.id);
+                    const newIndex = groupCards.length; // 마지막 위치
+
+                    // 중앙화된 함수로 그리드 좌표 계산
+                    const gridPos = indexToAbsolutePosition(newIndex, targetGroup.x, targetGroup.y, gridConfig);
+
+                    // 그룹 안에 드롭됨 - column_id 설정 + 그리드 좌표로 변경
                     onTasksUpdate(tasks.map(t =>
-                        t.id === task.id ? { ...t, column_id: targetGroup.id } : t
+                        t.id === task.id
+                            ? { ...t, column_id: targetGroup.id, x: gridPos.x, y: gridPos.y }
+                            : t
                     ));
-                    if (onTaskUpdate) {
-                        await onTaskUpdate(task.id, { column_id: targetGroup.id, x: task.x, y: task.y });
-                    }
+                    // 큐에 등록 (그리드 좌표)
+                    queueCardChange(
+                        'card-position',
+                        task.id,
+                        { taskId: task.id, x: gridPos.x, y: gridPos.y, column_id: targetGroup.id },
+                        snapshot,
+                        async (payload) => {
+                            if (onTaskUpdate) {
+                                await onTaskUpdate(payload.taskId, {
+                                    column_id: payload.column_id ?? undefined,
+                                    x: payload.x,
+                                    y: payload.y
+                                });
+                            }
+                        }
+                    );
                 } else {
-                    // 그룹 밖에 드롭됨 - 위치만 저장
-                    await saveTaskPosition(freeDragState.id, task.x, task.y);
+                    // 그룹 밖에 드롭됨 - 절대 좌표로 저장 (Optimistic)
+                    saveTaskPosition(freeDragState.id, task.x, task.y, snapshot);
                 }
             }
             setFreeDragState(null);
+            setFreeCardTargetGroupId(null); // 하이라이트 초기화
         }
         if (groupDragState) {
             const draggedGroup = groups.find(g => g.id === groupDragState.id);
             if (draggedGroup) {
+                // 롤백용 스냅샷 (드래그 시작 전 위치)
+                const groupSnapshot: GroupPositionSnapshot = {
+                    x: groupDragState.initialGroupX,
+                    y: groupDragState.initialGroupY,
+                };
+
                 // 그룹이 다른 그룹 안에 드롭되면 parent_id 설정
                 // 단, 자신의 자식 그룹 안에는 들어갈 수 없음 (순환 참조 방지)
                 const isDescendant = (parentId: number | null | undefined, targetId: number): boolean => {
@@ -1079,8 +1421,43 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     }
                 }
 
+                // Optimistic UI: 그룹 위치 저장 (큐에 등록, 비동기 대기 없음)
                 if (onGroupMove) {
-                    await onGroupMove(groupDragState.id, draggedGroup.x, draggedGroup.y);
+                    queueGroupChange(
+                        'group-position',
+                        groupDragState.id,
+                        { groupId: groupDragState.id, x: draggedGroup.x, y: draggedGroup.y },
+                        groupSnapshot,
+                        async (payload) => {
+                            await onGroupMove(payload.groupId, payload.x, payload.y);
+                        }
+                    );
+                }
+
+                // 그룹에 속한 카드들의 위치도 저장 (절대 좌표 시스템)
+                const effectiveDeltaX = draggedGroup.x - groupDragState.initialGroupX;
+                const effectiveDeltaY = draggedGroup.y - groupDragState.initialGroupY;
+
+                // 이동량이 있을 때만 카드 위치 저장
+                if (effectiveDeltaX !== 0 || effectiveDeltaY !== 0) {
+                    for (const containedTask of groupDragState.containedTaskIds) {
+                        const task = tasks.find(t => t.id === containedTask.id);
+                        if (task && onTaskUpdate) {
+                            const newX = containedTask.initialX + effectiveDeltaX;
+                            const newY = containedTask.initialY + effectiveDeltaY;
+
+                            // 각 카드의 위치를 큐에 등록
+                            queueCardChange(
+                                'card-position',
+                                task.id,
+                                { taskId: task.id, x: newX, y: newY, column_id: task.column_id },
+                                { x: containedTask.initialX, y: containedTask.initialY, column_id: task.column_id },
+                                async (payload) => {
+                                    await onTaskUpdate(payload.taskId, { x: payload.x, y: payload.y });
+                                }
+                            );
+                        }
+                    }
                 }
             }
             setGroupDragState(null);
@@ -1133,12 +1510,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             {/* Header */}
             <div className="flex-shrink-0 bg-white/80 dark:bg-[#12131a]/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 p-4 flex items-center justify-between z-10 shadow-sm">
                 <div className="flex items-center gap-4">
-                    {isSavingPosition && (
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <Loader2 size={14} className="animate-spin" />
-                            <span>저장 중...</span>
-                        </div>
-                    )}
+                    {/* Optimistic UI: 동기화 상태 인디케이터 */}
+                    <SyncStatusIndicator
+                        status={syncStatus}
+                        pendingCount={pendingCount}
+                        error={lastError}
+                        onRetry={retryFailed}
+                        onDismissError={clearError}
+                    />
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 glass-panel px-4 py-2 rounded-xl shadow-sm">
@@ -1177,7 +1556,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 {/* ========== 레이어 1: 그룹 배경 (z-0) ========== */}
                 {groups.map(group => {
                     const groupTasks = tasks.filter(t => t.column_id === group.id);
-                    const isDropTarget = dropPreview?.groupId === group.id;
+                    // 드롭 타겟 하이라이트:
+                    // 1. useSortableGrid에서 계산된 dropPreview
+                    // 2. 자유 카드 드래그 시 freeCardTargetGroupId
+                    const isDropTarget = isGroupHighlighted(group.id) || freeCardTargetGroupId === group.id;
 
                     return (
                         <SortableGroup
@@ -1185,7 +1567,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             group={group}
                             tasks={groupTasks}
                             isDropTarget={isDropTarget}
-                            dropPreviewIndex={isDropTarget ? dropPreview.index : null}
+                            dropPreviewIndex={dropPreview?.groupId === group.id ? dropPreview.index : null}
                             onPointerDown={(e, g) => handlePointerDown(e, undefined, g)}
                             onTitleEdit={handleGroupTitleEdit}
                             onCollapse={handleGroupCollapse}
@@ -1246,6 +1628,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                     <TaskCard
                                         task={task}
                                         variant="sticky"
+                                        isGrouped={true}
                                         isSelected={selectedTaskIds.has(task.id)}
                                         onClick={() => onTaskSelect(task)}
                                         onPointerDown={(e) => handleSortableCardDragStart(task.id, e)}
@@ -1276,7 +1659,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                                         column_id: targetColumn.id
                                                     });
                                                 } catch (err) {
-                                                    
+
                                                 }
                                             }
                                         }}
@@ -1307,6 +1690,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                 <TaskCard
                                     task={task}
                                     variant="sticky"
+                                    isGrouped={true}
                                     isSelected={true}
                                     onClick={() => {}}
                                     onConnectStart={() => {}}
@@ -1325,6 +1709,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         key={task.id}
                         task={task}
                         variant="sticky"
+                        isGrouped={false}
                         style={{ position: 'absolute', left: task.x || 0, top: task.y || 0 }}
                         isSelected={selectedTaskIds.has(task.id)}
                         onPointerDown={(evt) => handlePointerDown(evt, task)}
@@ -1356,7 +1741,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                         column_id: targetColumn.id
                                     });
                                 } catch (err) {
-                                    
+
                                 }
                             }
                         }}
@@ -1424,6 +1809,21 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
             <input type="file" multiple ref={fileInputRef} className="hidden" onChange={(e) => { /* handleGlobalFileChange */ }} />
             <input type="file" multiple ref={taskFileInputRef} className="hidden" onChange={(e) => { /* handleTaskFileChange */ }} />
+
+            {/* Optimistic UI: 에러 토스트 */}
+            {showErrorToast && lastError && (
+                <SyncErrorToast
+                    error={lastError}
+                    onRetry={() => {
+                        setShowErrorToast(false);
+                        retryFailed();
+                    }}
+                    onDismiss={() => {
+                        setShowErrorToast(false);
+                        clearError();
+                    }}
+                />
+            )}
         </div>
     );
 };

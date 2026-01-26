@@ -28,6 +28,10 @@ interface TaskCardProps {
     onFileDrop?: (taskId: number, fileId: number) => void;
     // 네이티브 파일 드롭 (브라우저에서 직접 드래그)
     onNativeFileDrop?: (taskId: number, files: File[]) => void;
+    // 배치 컨텍스트: 그룹 내(true) vs 자유 배치(false)
+    // true: w-full (부모 컨테이너에 맞춤)
+    // false: w-[280px] (고정 너비)
+    isGrouped?: boolean;
 }
 
 // 상태별 아이콘 컴포넌트
@@ -52,10 +56,13 @@ const STATUS_OPTIONS = [
 ];
 
 export const TaskCard: React.FC<TaskCardProps> = ({
-                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile, isFileDropTarget, onFileDragEnter, onFileDragLeave, onFileDrop, onNativeFileDrop
+                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile, isFileDropTarget, onFileDragEnter, onFileDragLeave, onFileDrop, onNativeFileDrop, isGrouped = false
                                                   }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showStatusMenu, setShowStatusMenu] = useState(false);
+
+    // 너비 클래스 결정: 그룹 내(w-full) vs 자유 배치(고정 너비)
+    const widthClass = isGrouped ? 'w-full' : 'w-[280px]';
 
     const handleDragStart = (e: React.DragEvent) => {
         if (variant !== 'sticky') {
@@ -113,7 +120,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                     onDoubleClick={handleDoubleClick}
                     onKeyDown={handleKeyDown}
                     tabIndex={0}
-                    className={`absolute group flex flex-col w-[280px] cursor-grab active:cursor-grabbing focus:outline-none z-30 select-none bg-[#FFF9C4] dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg shadow-xl transition-all duration-200`}
+                    className={`absolute group flex flex-col w-full cursor-grab active:cursor-grabbing focus:outline-none z-30 select-none bg-[#FFF9C4] dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg shadow-xl transition-all duration-200`}
                     style={style}
                 >
                     <div className="flex items-center justify-between p-3 border-b border-yellow-200/50 dark:border-yellow-700/30">
@@ -237,10 +244,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
     if (variant === 'sticky') {
         if (stickyStyle) {
-            cardClasses += `${stickyStyle.bg} ${stickyStyle.text} ${stickyStyle.border} border p-4 shadow-md hover:shadow-xl duration-200 w-[280px] flex flex-col justify-between absolute select-none ${isExpanded ? 'z-30' : 'z-10'}`;
+            cardClasses += `${stickyStyle.bg} ${stickyStyle.text} ${stickyStyle.border} border p-4 shadow-md hover:shadow-xl duration-200 ${widthClass} flex flex-col justify-between absolute select-none ${isExpanded ? 'z-30' : 'z-10'}`;
         } else if (isCustomColor) {
             const textColorClass = getContrastColor(task.color || '#ffffff');
-            cardClasses += `${textColorClass} border border-gray-200 dark:border-gray-700 p-4 shadow-md hover:shadow-xl duration-200 w-[280px] flex flex-col justify-between absolute select-none ${isExpanded ? 'z-30' : 'z-10'}`;
+            cardClasses += `${textColorClass} border border-gray-200 dark:border-gray-700 p-4 shadow-md hover:shadow-xl duration-200 ${widthClass} flex flex-col justify-between absolute select-none ${isExpanded ? 'z-30' : 'z-10'}`;
         }
     } else {
         cardClasses += `${transparent ? 'bg-black/20 hover:bg-black/30 dark:bg-black/20 dark:hover:bg-black/30 bg-white/40 hover:bg-white/50' : 'bg-white dark:bg-[#22272b] hover:bg-gray-50 dark:hover:bg-[#2c333a]'} p-3 mb-2 border border-gray-200 dark:border-transparent hover:border-gray-300 dark:hover:border-gray-500 shadow-sm z-10`;

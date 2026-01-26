@@ -4,6 +4,19 @@ import { MOCK_WORKSPACES, MOCK_PROJECTS, MOCK_ONLINE_MEMBERS, MOCK_MEMBERS } fro
 import { mapProjectResponse, mapWorkspaceMemberToMember } from './mappers';
 
 // ============================================
+// 백엔드 응답 타입 (내부용)
+// ============================================
+
+interface BackendMemberResponse {
+  id: number;
+  email: string;
+  name: string;
+  is_student_verified?: boolean;
+  profile_image?: string | null;
+  role?: string;
+}
+
+// ============================================
 // 워크스페이스 API
 // ============================================
 
@@ -201,7 +214,7 @@ export async function getMyProjects(): Promise<Project[]> {
       // 멤버 수 (워크스페이스 레벨)
       let memberCount = 0;
       try {
-        const members = await apiFetch<any[]>(`/workspaces/${ws.id}/members`);
+        const members = await apiFetch<BackendMemberResponse[]>(`/workspaces/${ws.id}/members`);
         memberCount = members.length;
       } catch {
         // 멤버 조회 실패 시 0
@@ -237,7 +250,7 @@ export async function getProjects(workspaceId: number): Promise<Project[]> {
       description?: string;
     }[]>(`/workspaces/${workspaceId}/projects`),
     apiFetch<{ name: string }>(`/workspaces/${workspaceId}`).catch(() => ({ name: '워크스페이스' })),
-    apiFetch<any[]>(`/workspaces/${workspaceId}/members`).catch(() => []),
+    apiFetch<BackendMemberResponse[]>(`/workspaces/${workspaceId}/members`).catch(() => []),
   ]);
 
   return projects.map(p => mapProjectResponse(p, workspace.name, members.length));
@@ -433,7 +446,6 @@ export function subscribeOnlineMembers(
   };
 
   eventSource.onerror = (error) => {
-    onError?.(error);
     onError?.(error);
   };
 

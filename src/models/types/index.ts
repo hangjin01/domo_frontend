@@ -104,13 +104,28 @@ export interface Task {
   content?: string;
   description?: string;
 
-  // 캔버스 위치
+  // ============================================
+  // 좌표 시스템 (핵심!)
+  // ============================================
+  // x, y는 백엔드에 저장되는 값이며, 의미는 column_id 유무에 따라 다름:
+  //
+  // [그룹에 속한 카드] (column_id가 있음)
+  //   x, y = 그룹 내 상대 좌표 (그룹 좌상단 기준)
+  //   렌더링 시 절대 좌표 = group.x + card.x, group.y + card.y
+  //   → 그룹 이동 시 카드 좌표 업데이트 불필요!
+  //
+  // [자유 배치 카드] (column_id가 없음)
+  //   x, y = 캔버스 절대 좌표
+  //   렌더링 시 그대로 사용
+  //
+  // 이 설계로 그룹 이동 시 그룹 위치만 저장하면 됨 (N개 카드 → 1회 API)
+  // ============================================
   x: number;
   y: number;
 
   // 분류
   boardId: number;       // 프론트에서 프로젝트 ID를 boardId로 사용
-  column_id?: number;    // 백엔드 컬럼 ID
+  column_id?: number;    // 백엔드 컬럼 ID (그룹 ID). 없으면 자유 배치.
   taskType?: number;     // 0: 일, 1: 메모, 2: 파일
   card_type?: string;    // 백엔드 card_type (task, memo)
 

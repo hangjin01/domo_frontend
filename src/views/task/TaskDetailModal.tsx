@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Task, Comment, Tag as TagType } from '@/src/models/types';
 import { STICKY_COLORS, getStickyStyle } from '@/src/models/utils/canvas';
 import { createCardComment, getCardComments, deleteCardComment, detachFileFromCard } from '@/src/models/api';
@@ -56,6 +56,14 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     // 파일 연결 해제 상태
     const [detachingFileId, setDetachingFileId] = useState<number | null>(null);
 
+    // Ref로 콜백 안정화 (무한 루프 방지)
+    const onUpdateRef = useRef(onUpdate);
+    const taskRef = useRef(task);
+    useEffect(() => {
+        onUpdateRef.current = onUpdate;
+        taskRef.current = task;
+    }, [onUpdate, task]);
+
     // task가 변경될 때 상태 동기화 (useCallback으로 분리)
     const syncTaskState = useCallback(() => {
         setDesc(task.description || '');
@@ -73,24 +81,35 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
     // 댓글 목록 로드 (API 연결)
     useEffect(() => {
+        let cancelled = false;
+
         const loadComments = async () => {
             if (!task.id) return;
 
             setIsLoadingComments(true);
             try {
                 const loadedComments = await getCardComments(task.id);
+                if (cancelled) return; // 컴포넌트 언마운트 시 상태 업데이트 방지
+                
                 setComments(loadedComments);
-                // 부모 컴포넌트에도 업데이트
-                onUpdate({ ...task, comments: loadedComments });
+                // ref를 통해 최신 콜백 호출 (의존성 배열에 추가하지 않음)
+                onUpdateRef.current({ ...taskRef.current, comments: loadedComments });
             } catch (error) {
+                if (cancelled) return;
                 console.error('Failed to load comments:', error);
                 // 실패 시 기존 comments 유지
             } finally {
-                setIsLoadingComments(false);
+                if (!cancelled) {
+                    setIsLoadingComments(false);
+                }
             }
         };
 
         loadComments();
+        
+        return () => {
+            cancelled = true;
+        };
     }, [task.id]); // task.id가 변경될 때만 로드
 
     // ESC 키 핸들러

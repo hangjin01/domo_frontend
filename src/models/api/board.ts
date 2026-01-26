@@ -1050,6 +1050,103 @@ export async function stopEditingCard(cardId: number): Promise<void> {
 }
 
 // ============================================
+// Batch API (카드 위치 일괄 업데이트)
+// ============================================
+
+/**
+ * Batch 카드 위치 업데이트 요청 타입
+ */
+export interface BatchCardPositionUpdate {
+  id: number;
+  x: number;
+  y: number;
+  column_id?: number | null;
+}
+
+/**
+ * Batch 카드 위치 업데이트 응답 타입 (내부용)
+ */
+interface BatchUpdateResponse {
+  id: number;
+  title: string;
+  content: string | null;
+  order: number;
+  column_id: number | null;
+  card_type: string;
+  x: number;
+  y: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 여러 카드의 위치를 일괄 업데이트
+ * 단일 트랜잭션으로 처리되어 Race Condition 방지
+ * 
+ * @param updates - 업데이트할 카드 목록 (id, x, y, column_id)
+ * @returns 업데이트된 카드 목록
+ */
+export async function batchUpdateCardPositions(
+  updates: BatchCardPositionUpdate[]
+): Promise<Task[]> {
+  if (updates.length === 0) {
+    return [];
+  }
+
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(200);
+    // Mock: 각 카드를 개별 업데이트
+    const results: Task[] = [];
+    for (const update of updates) {
+      const task = updateMockTask(update.id, {
+        x: update.x,
+        y: update.y,
+        column_id: update.column_id ?? undefined,
+      });
+      if (task) {
+        results.push(task);
+      }
+    }
+    return results;
+  }
+
+  // 백엔드 Batch API 호출
+  // PATCH /cards/batch
+  const payload = {
+    cards: updates.map(u => ({
+      id: u.id,
+      x: u.x,
+      y: u.y,
+      column_id: u.column_id,
+    })),
+  };
+
+  const response = await apiFetch<BatchUpdateResponse[]>('/cards/batch', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+  // 응답을 Task 타입으로 변환
+  return response.map(card => ({
+    id: card.id,
+    title: card.title,
+    description: card.content || undefined,
+    content: card.content || undefined,
+    status: 'todo' as const, // Batch 응답에는 컬럼 정보가 없으므로 기본값
+    x: card.x,
+    y: card.y,
+    boardId: 0, // Batch 응답에는 project_id가 없음
+    column_id: card.column_id ?? undefined,
+    card_type: card.card_type,
+    assignees: [],
+    files: [],
+    comments: [],
+    created_at: card.created_at,
+    updated_at: card.updated_at,
+  }));
+}
+
+// ============================================
 // 하위 호환용 (기존 코드에서 사용하던 함수명)
 // ============================================
 
