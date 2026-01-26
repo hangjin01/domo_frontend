@@ -1,4 +1,8 @@
+<<<<<<< HEAD:src/models/api/post.ts
 import type { Post, PostCreateRequest, PostUpdateRequest, PostComment, PostCommentCreateRequest } from '../types';
+=======
+import type { Post, PostCreateRequest, PostUpdateRequest, PostComment, PostCommentCreateRequest } from '../../types';
+>>>>>>> upstream/main:src/lib/api/post.ts
 import { API_CONFIG, apiFetch, apiUpload, mockDelay } from './config';
 import { MOCK_POSTS } from './mock-data';
 
@@ -22,7 +26,11 @@ export async function getProjectPosts(projectId: number): Promise<Post[]> {
 
     return posts.map(post => ({
         ...post,
+<<<<<<< HEAD:src/models/api/post.ts
         title: post.title || 'Untitled',
+=======
+        title: post.title || 'Untitled', // 백엔드 데이터 보정
+>>>>>>> upstream/main:src/lib/api/post.ts
         project_id: projectId,
         user: post.user || {
             id: post.user_id,
@@ -69,17 +77,29 @@ export async function createProjectPost(projectId: number, data: PostCreateReque
         const newPost: Post = {
             id: Date.now(),
             project_id: projectId,
+<<<<<<< HEAD:src/models/api/post.ts
             user_id: 1,
             title: data.title,
             content: data.content,
             created_at: new Date().toISOString(),
             user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as Post['user'],
+=======
+            user_id: 1, // Mock user
+            title: data.title,
+            content: data.content,
+            created_at: new Date().toISOString(),
+            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as any,
+>>>>>>> upstream/main:src/lib/api/post.ts
             comments: []
         };
         return newPost;
     }
 
+<<<<<<< HEAD:src/models/api/post.ts
     // 프로젝트 게시글은 JSON 전송 (파일 업로드 미지원)
+=======
+    // 프로젝트 게시글은 JSON 전송 (파일 업로드 미지원 가정)
+>>>>>>> upstream/main:src/lib/api/post.ts
     return apiFetch<Post>(`/projects/${projectId}/posts`, {
         method: 'POST',
         body: JSON.stringify({
@@ -99,12 +119,20 @@ export async function createCommunityPost(data: PostCreateRequest): Promise<Post
         const newPost: Post = {
             id: Date.now(),
             project_id: 1,
+<<<<<<< HEAD:src/models/api/post.ts
             user_id: 1,
+=======
+            user_id: 1, // Mock user
+>>>>>>> upstream/main:src/lib/api/post.ts
             title: data.title,
             content: data.content,
             image_url: data.file ? URL.createObjectURL(data.file) : undefined,
             created_at: new Date().toISOString(),
+<<<<<<< HEAD:src/models/api/post.ts
             user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as Post['user'],
+=======
+            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as any,
+>>>>>>> upstream/main:src/lib/api/post.ts
             comments: []
         };
         return newPost;
@@ -233,7 +261,11 @@ export async function createCommunityComment(postId: number, data: PostCommentCr
             user_id: 1,
             content: data.content,
             created_at: new Date().toISOString(),
+<<<<<<< HEAD:src/models/api/post.ts
             user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as PostComment['user']
+=======
+            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as any
+>>>>>>> upstream/main:src/lib/api/post.ts
         };
         return newComment;
     }
@@ -257,7 +289,11 @@ export async function createProjectComment(postId: number, data: PostCommentCrea
             user_id: 1,
             content: data.content,
             created_at: new Date().toISOString(),
+<<<<<<< HEAD:src/models/api/post.ts
             user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as PostComment['user']
+=======
+            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as any
+>>>>>>> upstream/main:src/lib/api/post.ts
         };
         return newComment;
     }
@@ -296,4 +332,8 @@ export async function deleteProjectComment(commentId: number): Promise<{ message
     return apiFetch<{ message: string }>(`/posts/comments/${commentId}`, {
         method: 'DELETE',
     });
+<<<<<<< HEAD:src/models/api/post.ts
 }
+=======
+}
+>>>>>>> upstream/main:src/lib/api/post.ts

@@ -397,7 +397,10 @@ export interface PostComment {
 
   // Join된 데이터 (선택적)
   user?: User;
+<<<<<<< HEAD:src/models/types/index.ts
   user_name?: string; // 백엔드에서 직접 반환하는 경우
+=======
+>>>>>>> upstream/main:src/types/index.ts
 }
 
 export interface Post {
@@ -411,7 +414,11 @@ export interface Post {
   updated_at?: string;
 
   // Join된 데이터 (선택적)
+<<<<<<< HEAD:src/models/types/index.ts
   user?: User;
+=======
+  user?: User; // 백엔드에서 user 객체를 통째로 안 줄 수도 있음
+>>>>>>> upstream/main:src/types/index.ts
   user_name?: string; // 백엔드에서 user_name 포맷으로 줄 때 사용
   comments?: PostComment[];
 }
