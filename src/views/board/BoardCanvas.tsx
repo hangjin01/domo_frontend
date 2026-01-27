@@ -83,7 +83,7 @@ interface BoardCanvasProps {
     onRenameBoard: (id: number, name: string) => void;
     snapToGrid: boolean;
     groups: Group[];
-    onGroupsUpdate: (groups: Group[]) => void;
+    onGroupsUpdate: (groups: Group[]) => Promise<Map<number, number>>;
     onGroupMove?: (groupId: number, newX: number, newY: number) => Promise<void>;
     onGroupDelete?: (groupId: number) => Promise<void>;
     onToggleGrid: () => void;
@@ -92,6 +92,8 @@ interface BoardCanvasProps {
     onFileDropOnCard?: (cardId: number, fileId: number) => Promise<void>;
     onNativeFileDrop?: (cardId: number, files: File[]) => Promise<void>;
     onBackgroundFileDrop?: (files: File[]) => Promise<void>;
+    // 🔧 [FIX] 임시 ID → 실제 ID 변환 함수
+    resolveColumnId?: (columnId: number | null | undefined) => number | null | undefined;
 }
 
 const COLUMN_WIDTH = 350;
@@ -99,7 +101,7 @@ const COLUMN_GAP = 30;
 const COLUMN_START_X = 50;
 
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onFileDropOnCard, onNativeFileDrop, onBackgroundFileDrop
+                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onFileDropOnCard, onNativeFileDrop, onBackgroundFileDrop, resolveColumnId
                                                         }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const boardSelectorRef = useRef<HTMLDivElement>(null);
@@ -252,14 +254,36 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             }));
         },
         batchApiCall: async (payloads: BatchCardPositionPayload[]) => {
-            // Batch API 호출
-            const updates = payloads.map(p => ({
-                id: p.taskId,
-                x: p.x,
-                y: p.y,
-                column_id: p.column_id,
-            }));
-            await batchUpdateCardPositions(updates);
+            // 🔧 [FIX] 임시 ID(타임스탬프) 필터링
+            // PostgreSQL Integer 최대값: 2,147,483,647
+            // Date.now() 범위: ~1,700,000,000,000 (약 1.7조)
+            const MAX_VALID_DB_ID = 2147483647;
+
+            const sanitizedPayloads = payloads.map(p => {
+                let columnId = p.column_id;
+
+                // 임시 ID인 경우 resolveColumnId로 실제 ID 변환 시도
+                if (columnId && columnId > MAX_VALID_DB_ID) {
+                    const resolvedId = resolveColumnId?.(columnId);
+                    if (resolvedId && resolvedId <= MAX_VALID_DB_ID) {
+                        console.log(`[BatchAPI] column_id 변환: ${columnId} → ${resolvedId}`);
+                        columnId = resolvedId;
+                    } else {
+                        // 변환 실패 시 null로 설정 (자유 배치로 fallback)
+                        console.warn(`[BatchAPI] 임시 ID ${columnId} 변환 실패, null로 대체`);
+                        columnId = null;
+                    }
+                }
+
+                return {
+                    id: p.taskId,
+                    x: p.x,
+                    y: p.y,
+                    column_id: columnId,
+                };
+            });
+
+            await batchUpdateCardPositions(sanitizedPayloads);
         },
     });
 
@@ -745,7 +769,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }, [selectedTaskIds, isDeletingTask, onTasksUpdate, onConnectionDelete, onTaskDelete]); // [최적화] tasks, connections 의존성 제거
 
     useEffect(() => {
-        const handleKeyDown = (evt: KeyboardEvent) => {
+        const handleKeyDown = async (evt: KeyboardEvent) => {
             const key = evt.key.toLowerCase();
             if (key === 'c' && selectedTaskIds.size > 0) {
                 evt.preventDefault();
@@ -763,10 +787,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     gridConfig
                 );
 
-                // 2. 새 그룹 생성
-                const newGroupId = Date.now();
+                // 2. 새 그룹 생성 (임시 ID)
+                const tempGroupId = Date.now();
                 const newGroup: Group = {
-                    id: newGroupId,
+                    id: tempGroupId,
                     title: 'Group',
                     x: layoutResult.group.x,
                     y: layoutResult.group.y,
@@ -776,9 +800,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     parentId: null,
                     depth: 0,
                 };
-                onGroupsUpdate([...groups, newGroup]);
 
-                // 3. 카드들의 column_id 및 좌표를 그리드 레이아웃에 맞게 업데이트
+                // 3. 카드들의 column_id 및 좌표를 그리드 레이아웃에 맞게 업데이트 (UI 즉시 반영)
                 const cardPositionMap = new Map(
                     layoutResult.cardPositions.map(cp => [cp.taskId, { x: cp.x, y: cp.y }])
                 );
@@ -789,7 +812,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         const newPos = cardPositionMap.get(t.id);
                         return {
                             ...t,
-                            column_id: newGroupId,
+                            column_id: tempGroupId, // 임시 ID로 먼저 설정
                             x: newPos?.x ?? t.x,
                             y: newPos?.y ?? t.y,
                         };
@@ -798,28 +821,38 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 });
                 onTasksUpdate(updatedTasks);
 
-                // 4. Batch API로 카드 위치 동기화
-                const batchItems: BatchChangeItem[] = layoutResult.cardPositions.map(cp => {
-                    const originalTask = selectedTasks.find(t => t.id === cp.taskId);
-                    return {
-                        entityId: cp.taskId,
-                        payload: {
-                            taskId: cp.taskId,
-                            x: cp.x,
-                            y: cp.y,
-                            column_id: newGroupId,
-                        },
-                        snapshot: {
-                            x: originalTask?.x ?? 0,
-                            y: originalTask?.y ?? 0,
-                            column_id: originalTask?.column_id,
-                        },
-                    };
-                });
+                // 🔧 [FIX] 그룹 생성 완료 대기 후 실제 ID로 Batch API 호출
+                try {
+                    const idMapping = await onGroupsUpdate([...groups, newGroup]);
+                    const realGroupId = idMapping.get(tempGroupId) ?? tempGroupId;
 
-                if (batchItems.length > 0) {
-                    console.log('[BoardCanvas] 그룹 생성 - Batch 큐 추가, 카드 수:', batchItems.length);
-                    queueBatchCardChange(batchItems);
+                    console.log(`[BoardCanvas] 그룹 생성 완료: 임시 ID ${tempGroupId} → 실제 ID ${realGroupId}`);
+
+                    // 4. Batch API로 카드 위치 동기화 (실제 ID 사용)
+                    const batchItems: BatchChangeItem[] = layoutResult.cardPositions.map(cp => {
+                        const originalTask = selectedTasks.find(t => t.id === cp.taskId);
+                        return {
+                            entityId: cp.taskId,
+                            payload: {
+                                taskId: cp.taskId,
+                                x: cp.x,
+                                y: cp.y,
+                                column_id: realGroupId, // 🔧 실제 ID 사용
+                            },
+                            snapshot: {
+                                x: originalTask?.x ?? 0,
+                                y: originalTask?.y ?? 0,
+                                column_id: originalTask?.column_id,
+                            },
+                        };
+                    });
+
+                    if (batchItems.length > 0) {
+                        console.log('[BoardCanvas] 그룹 생성 - Batch 큐 추가, 카드 수:', batchItems.length, '실제 column_id:', realGroupId);
+                        queueBatchCardChange(batchItems);
+                    }
+                } catch (err) {
+                    console.error('[BoardCanvas] 그룹 생성 실패:', err);
                 }
 
                 setSelectedTaskIds(new Set());
