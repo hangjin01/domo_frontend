@@ -151,6 +151,9 @@ export function usePendingSync<T = unknown, S = unknown>(
     isEntityLocked, // [Race Condition Guard] Lock 체크 함수
   } = options;
 
+  // 개발 환경에서만 로그 출력
+  const isDev = process.env.NODE_ENV === 'development';
+
   // 상태
   const [pendingChanges, setPendingChanges] = useState<PendingChange<T, S>[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -207,18 +210,18 @@ export function usePendingSync<T = unknown, S = unknown>(
 
     const batchApi = batchApiCallRef.current;
     if (!batchApi) {
-      console.warn('[Optimistic] Batch API 콜이 설정되지 않음');
+      if (isDev) console.warn('[Optimistic] Batch API 콜이 설정되지 않음');
       return true;
     }
 
-    console.log('[Optimistic] Batch 동기화 시작, 카드 수:', batch.items.length);
+    if (isDev) console.log('[Optimistic] Batch 동기화 시작, 카드 수:', batch.items.length);
 
     try {
       // Batch API 호출
       const payloads = batch.items.map(item => item.payload);
       await batchApi(payloads);
 
-      console.log('[Optimistic] Batch 동기화 성공');
+      if (isDev) console.log('[Optimistic] Batch 동기화 성공');
 
       // 성공 시 Batch 상태 초기화
       setBatchChange(null);
@@ -226,7 +229,7 @@ export function usePendingSync<T = unknown, S = unknown>(
 
       return true;
     } catch (err) {
-      console.error('[Optimistic] Batch 동기화 실패:', err);
+      if (isDev) console.error('[Optimistic] Batch 동기화 실패:', err);
 
       const canRetry = batch.retryCount < maxRetries;
 
@@ -240,7 +243,7 @@ export function usePendingSync<T = unknown, S = unknown>(
         batchChangeRef.current = updatedBatch;
       } else {
         // 최대 재시도 초과 - 롤백
-        console.log('[Optimistic] Batch 최대 재시도 초과, 롤백 실행');
+        if (isDev) console.log('[Optimistic] Batch 최대 재시도 초과, 롤백 실행');
 
         // [Race Condition Guard] Lock된 엔티티는 롤백에서 제외
         const isLockedFn = isEntityLockedRef.current;
@@ -250,16 +253,16 @@ export function usePendingSync<T = unknown, S = unknown>(
             entityId: item.entityId,
             isLocked: isLockedFn(item.entityId),
           }));
-          console.log('[Optimistic] 🔍 Batch 롤백 Lock 체크:', lockCheckResults);
+          if (isDev) console.log('[Optimistic] 🔍 Batch 롤백 Lock 체크:', lockCheckResults);
 
           const lockedIds = lockCheckResults.filter(r => r.isLocked).map(r => r.entityId);
           const unlockedIds = lockCheckResults.filter(r => !r.isLocked).map(r => r.entityId);
 
           if (lockedIds.length > 0) {
-            console.log('[Optimistic] 🛡️ Lock된 엔티티 롤백 스킵:', lockedIds);
+            if (isDev) console.log('[Optimistic] 🛡️ Lock된 엔티티 롤백 스킵:', lockedIds);
           }
           if (unlockedIds.length > 0) {
-            console.log('[Optimistic] ⚠️ Lock 안된 엔티티 롤백 진행:', unlockedIds);
+            if (isDev) console.log('[Optimistic] ⚠️ Lock 안된 엔티티 롤백 진행:', unlockedIds);
           }
 
           const itemsToRollback = batch.items.filter(item => !isLockedFn(item.entityId));
@@ -267,7 +270,7 @@ export function usePendingSync<T = unknown, S = unknown>(
             onBatchRollbackRef.current?.(itemsToRollback);
           }
         } else {
-          console.log('[Optimistic] ⚠️ isEntityLocked 함수 없음, 전체 롤백');
+          if (isDev) console.log('[Optimistic] ⚠️ isEntityLocked 함수 없음, 전체 롤백');
           onBatchRollbackRef.current?.(batch.items);
         }
 
@@ -297,19 +300,19 @@ export function usePendingSync<T = unknown, S = unknown>(
     for (const change of changes) {
       const apiCall = apiCallsRef.current.get(change.id);
       if (!apiCall) {
-        console.warn('[Optimistic] API 콜 없음, 스킵:', change.id);
+        if (isDev) console.warn('[Optimistic] API 콜 없음, 스킵:', change.id);
         successIds.push(change.id);
         continue;
       }
 
       try {
-        console.log('[Optimistic] 단건 API 호출 중:', change.id, change.type);
+        if (isDev) console.log('[Optimistic] 단건 API 호출 중:', change.id, change.type);
         await apiCall(change.payload);
-        console.log('[Optimistic] 단건 API 성공:', change.id);
+        if (isDev) console.log('[Optimistic] 단건 API 성공:', change.id);
         successIds.push(change.id);
         apiCallsRef.current.delete(change.id);
       } catch (err) {
-        console.error('[Optimistic] 단건 API 실패:', change.id, err);
+        if (isDev) console.error('[Optimistic] 단건 API 실패:', change.id, err);
         const error = err instanceof Error ? err : new Error(String(err));
         const canRetry = change.retryCount < maxRetries;
 
@@ -330,12 +333,12 @@ export function usePendingSync<T = unknown, S = unknown>(
           // [Race Condition Guard] Lock된 엔티티는 롤백 스킵
           const isLockedFn = isEntityLockedRef.current;
           const entityIsLocked = isLockedFn ? isLockedFn(change.entityId) : false;
-          console.log(`[Optimistic] 🔍 단건 롤백 Lock 체크 - entityId: ${change.entityId}, isLocked: ${entityIsLocked}`);
+          if (isDev) console.log(`[Optimistic] 🔍 단건 롤백 Lock 체크 - entityId: ${change.entityId}, isLocked: ${entityIsLocked}`);
 
           if (entityIsLocked) {
-            console.log('[Optimistic] 🛡️ Lock된 엔티티 롤백 스킵:', change.entityId);
+            if (isDev) console.log('[Optimistic] 🛡️ Lock된 엔티티 롤백 스킵:', change.entityId);
           } else {
-            console.log('[Optimistic] ⚠️ Lock 안된 엔티티 롤백 진행:', change.entityId);
+            if (isDev) console.log('[Optimistic] ⚠️ Lock 안된 엔티티 롤백 진행:', change.entityId);
             onRollbackRef.current?.(change);
           }
 
@@ -345,7 +348,7 @@ export function usePendingSync<T = unknown, S = unknown>(
     }
 
     return { successIds, errors, updatedChanges };
-  }, [maxRetries]);
+  }, [maxRetries, isDev]);
 
   // ============================================
   // 통합 동기화 실행
@@ -357,7 +360,7 @@ export function usePendingSync<T = unknown, S = unknown>(
 
     if ((!hasBatchChanges && !hasSingleChanges) || isSyncingRef.current) return;
 
-    console.log('[Optimistic] executeSync 시작, Batch:', hasBatchChanges, ', 단건:', hasSingleChanges);
+    if (isDev) console.log('[Optimistic] executeSync 시작, Batch:', hasBatchChanges, ', 단건:', hasSingleChanges);
 
     isSyncingRef.current = true;
     setIsSyncing(true);
@@ -620,6 +623,7 @@ export function usePendingSync<T = unknown, S = unknown>(
     const pendingChangesSnapshot = pendingChangesRef;
     const isSyncingSnapshot = isSyncingRef;
     const batchApiSnapshot = batchApiCallRef;
+    const isDevEnv = process.env.NODE_ENV === 'development';
 
     return () => {
       // debounce 타이머 취소
@@ -631,12 +635,12 @@ export function usePendingSync<T = unknown, S = unknown>(
       // Batch 변경사항 즉시 저장
       const batchToSave = batchChangeSnapshot.current;
       if (batchToSave && batchToSave.items.length > 0 && !isSyncingSnapshot.current) {
-        console.log('[Optimistic] Unmount 시 Batch 저장 시작:', batchToSave.items.length, '개');
+        if (isDevEnv) console.log('[Optimistic] Unmount 시 Batch 저장 시작:', batchToSave.items.length, '개');
         const batchApi = batchApiSnapshot.current;
         if (batchApi) {
           const payloads = batchToSave.items.map(item => item.payload);
           batchApi(payloads).catch(err => {
-            console.error('[Optimistic] Unmount Batch 저장 실패:', err);
+            if (isDevEnv) console.error('[Optimistic] Unmount Batch 저장 실패:', err);
           });
         }
       }
@@ -644,12 +648,12 @@ export function usePendingSync<T = unknown, S = unknown>(
       // 단건 변경사항 즉시 저장
       const pendingToSave = pendingChangesSnapshot.current;
       if (pendingToSave.length > 0 && !isSyncingSnapshot.current) {
-        console.log('[Optimistic] Unmount 시 단건 저장 시작:', pendingToSave.length, '개');
+        if (isDevEnv) console.log('[Optimistic] Unmount 시 단건 저장 시작:', pendingToSave.length, '개');
         pendingToSave.forEach(change => {
           const apiCall = apiCallsMap.get(change.id);
           if (apiCall) {
             apiCall(change.payload).catch(err => {
-              console.error('[Optimistic] Unmount 단건 저장 실패:', change.id, err);
+              if (isDevEnv) console.error('[Optimistic] Unmount 단건 저장 실패:', change.id, err);
             });
           }
         });

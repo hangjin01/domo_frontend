@@ -220,6 +220,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     // ============================================
     const interactingEntitiesRef = useRef<Set<number>>(new Set());
 
+    // 개발 환경에서만 로그 출력
+    const isDev = process.env.NODE_ENV === 'development';
+
     // 엔티티 Lock 여부 확인 함수 (usePendingSync에 전달)
     const isEntityLocked = useCallback((entityId: number): boolean => {
         return interactingEntitiesRef.current.has(entityId);
@@ -228,26 +231,26 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     // 엔티티 Lock 추가
     const lockEntity = useCallback((entityId: number) => {
         interactingEntitiesRef.current.add(entityId);
-        console.log('[Guard] Entity locked:', entityId, '| Current locks:', Array.from(interactingEntitiesRef.current));
-    }, []);
+        if (isDev) console.log('[Guard] Entity locked:', entityId, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, [isDev]);
 
     // 엔티티 Lock 해제
     const unlockEntity = useCallback((entityId: number) => {
         interactingEntitiesRef.current.delete(entityId);
-        console.log('[Guard] Entity unlocked:', entityId, '| Current locks:', Array.from(interactingEntitiesRef.current));
-    }, []);
+        if (isDev) console.log('[Guard] Entity unlocked:', entityId, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, [isDev]);
 
     // 여러 엔티티 한번에 Lock
     const lockEntities = useCallback((entityIds: number[]) => {
         entityIds.forEach(id => interactingEntitiesRef.current.add(id));
-        console.log('[Guard] Entities locked:', entityIds, '| Current locks:', Array.from(interactingEntitiesRef.current));
-    }, []);
+        if (isDev) console.log('[Guard] Entities locked:', entityIds, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, [isDev]);
 
     // 여러 엔티티 한번에 Unlock
     const unlockEntities = useCallback((entityIds: number[]) => {
         entityIds.forEach(id => interactingEntitiesRef.current.delete(id));
-        console.log('[Guard] Entities unlocked:', entityIds, '| Current locks:', Array.from(interactingEntitiesRef.current));
-    }, []);
+        if (isDev) console.log('[Guard] Entities unlocked:', entityIds, '| Current locks:', Array.from(interactingEntitiesRef.current));
+    }, [isDev]);
 
     // ============================================
     // Optimistic UI: 카드 동기화 큐 관리 (Batch 모드)
@@ -275,7 +278,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         },
         onBatchRollback: (items: BatchChangeItem[]) => {
             // Batch 실패 시 모든 카드를 이전 상태로 롤백
-            console.log('[BoardCanvas] Batch 롤백 실행, 카드 수:', items.length);
+            if (isDev) console.log('[BoardCanvas] Batch 롤백 실행, 카드 수:', items.length);
             onTasksUpdate(tasksRef.current.map(t => {
                 const item = items.find(i => i.entityId === t.id);
                 if (item) {
@@ -438,7 +441,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             }
 
             // 3. Batch 큐에 추가 (단일 API 호출로 처리됨)
-            console.log('[BoardCanvas] Batch 큐 추가, 카드 수:', batchItems.length);
+            if (isDev) console.log('[BoardCanvas] Batch 큐 추가, 카드 수:', batchItems.length);
             queueBatchCardChange(batchItems);
         },
         DEFAULT_GRID_CONFIG
@@ -866,7 +869,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     const idMapping = await onGroupsUpdate([...groups, newGroup]);
                     const realGroupId = idMapping.get(tempGroupId) ?? tempGroupId;
 
-                    console.log(`[BoardCanvas] 그룹 생성 완료: 임시 ID ${tempGroupId} → 실제 ID ${realGroupId}`);
+                    if (isDev) console.log(`[BoardCanvas] 그룹 생성 완료: 임시 ID ${tempGroupId} → 실제 ID ${realGroupId}`);
 
                     // 4. Batch API로 카드 위치 동기화 (실제 ID 사용)
                     const batchItems: BatchChangeItem[] = layoutResult.cardPositions.map(cp => {
@@ -888,7 +891,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     });
 
                     if (batchItems.length > 0) {
-                        console.log('[BoardCanvas] 그룹 생성 - Batch 큐 추가, 카드 수:', batchItems.length, '실제 column_id:', realGroupId);
+                        if (isDev) console.log('[BoardCanvas] 그룹 생성 - Batch 큐 추가, 카드 수:', batchItems.length, '실제 column_id:', realGroupId);
                         queueBatchCardChange(batchItems);
                     }
                 } catch (err) {
@@ -946,11 +949,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     // Optimistic UI: 카드 위치 저장 (큐에 등록, 즉시 반환)
     const saveTaskPosition = useCallback((taskId: number, newX: number, newY: number, snapshot: CardPositionSnapshot) => {
         if (!onTaskUpdate) {
-            console.warn('[Optimistic] saveTaskPosition: onTaskUpdate가 없음');
+            if (isDev) console.warn('[Optimistic] saveTaskPosition: onTaskUpdate가 없음');
             return;
         }
 
-        console.log('[Optimistic] saveTaskPosition 큐 등록:', { taskId, newX, newY });
+        if (isDev) console.log('[Optimistic] saveTaskPosition 큐 등록:', { taskId, newX, newY });
 
         // API 호출을 큐에 등록
         queueCardChange(
@@ -959,12 +962,12 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             { taskId, x: newX, y: newY },
             snapshot,
             async (payload) => {
-                console.log('[Optimistic] saveTaskPosition API 호출:', payload);
+                if (isDev) console.log('[Optimistic] saveTaskPosition API 호출:', payload);
                 await onTaskUpdate(payload.taskId, { x: payload.x, y: payload.y });
-                console.log('[Optimistic] saveTaskPosition API 완료:', payload.taskId);
+                if (isDev) console.log('[Optimistic] saveTaskPosition API 완료:', payload.taskId);
             }
         );
-    }, [onTaskUpdate, queueCardChange]);
+    }, [onTaskUpdate, queueCardChange, isDev]);
 
     const handleDeleteTask = async (taskId: number) => {
         if (isDeletingTask) return;
@@ -1086,7 +1089,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
             // [Race Condition Guard] 그룹 및 포함된 카드들 Lock
             const childCardIds = containedTasks.map(t => t.id);
-            console.log(`[Guard] 🔒 Group drag start - Group ID: ${group.id}, Child cards: [${childCardIds.join(', ')}]`);
+            if (isDev) console.log(`[Guard] 🔒 Group drag start - Group ID: ${group.id}, Child cards: [${childCardIds.join(', ')}]`);
 
             lockEntity(group.id);
             if (childCardIds.length > 0) {
@@ -1415,7 +1418,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     await flushCardChanges();
                 } finally {
                     unlockEntity(cardId);
-                    console.log('[Guard] Sortable card drag complete - Lock released after flush');
+                    if (isDev) console.log('[Guard] Sortable card drag complete - Lock released after flush');
                 }
             })();
             return;
@@ -1494,7 +1497,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     await flushCardChanges();
                 } finally {
                     unlockEntity(cardId);
-                    console.log('[Guard] Free card drag complete - Lock released after flush');
+                    if (isDev) console.log('[Guard] Free card drag complete - Lock released after flush');
                 }
             })();
         }
@@ -1618,7 +1621,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     // flush 완료 후 Lock 해제 (성공/실패 무관)
                     unlockEntity(groupId);
                     unlockEntities(containedCardIds);
-                    console.log('[Guard] Group drag complete - Locks released after flush');
+                    if (isDev) console.log('[Guard] Group drag complete - Locks released after flush');
                 }
             })();
         }

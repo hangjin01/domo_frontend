@@ -593,7 +593,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                     g.id === newGroup.id ? { ...g, id: newColumn.id } : g
                 );
 
-                console.log(`[BoardScreen] 그룹 ID 매핑: ${newGroup.id} → ${newColumn.id}`);
+                if (process.env.NODE_ENV === 'development') console.log(`[BoardScreen] 그룹 ID 매핑: ${newGroup.id} → ${newColumn.id}`);
             } catch (err) {
                 console.error('Failed to create column:', err);
             }
@@ -604,7 +604,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             setTasks(prev => prev.map(task => {
                 if (task.column_id && idMapping.has(task.column_id)) {
                     const realId = idMapping.get(task.column_id)!;
-                    console.log(`[BoardScreen] 카드 ${task.id}의 column_id 교체: ${task.column_id} → ${realId}`);
+                    if (process.env.NODE_ENV === 'development') console.log(`[BoardScreen] 카드 ${task.id}의 column_id 교체: ${task.column_id} → ${realId}`);
                     return { ...task, column_id: realId };
                 }
                 return task;
