@@ -11,6 +11,7 @@ import { TaskDetailModal } from '@/src/views/task';
 import { Mascot } from '@/src/views/common';
 import { Dock, FileListPanel } from '@/src/views/dock';
 import { CommunityBoard } from '@/src/views/community';
+import { useUser } from '@/src/lib/contexts/UserContext';
 import {
     CARD_WIDTH,
     CARD_HEIGHT,
@@ -51,6 +52,9 @@ interface BoardScreenProps {
 }
 
 export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => {
+    // 현재 로그인한 사용자 정보
+    const { user } = useUser();
+    
     // 데이터 상태
     const [tasks, setTasks] = useState<Task[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
@@ -912,7 +916,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 showMembers={showMembers}
                 setShowMembers={setShowMembers}
                 projectId={project.id}
-                currentUserId={1}
+                currentUserId={user?.id ?? 0}
             />
 
             {/* 파일 목록 패널 */}
@@ -934,8 +938,8 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                     task={selectedTask}
                     onClose={() => setSelectedTask(null)}
                     onUpdate={handleTaskModalUpdate}
-                    currentUser="User"
-                    currentUserId={1}
+                    currentUser={user?.name ?? "User"}
+                    currentUserId={user?.id ?? 0}
                 />
             )}
         </div>
