@@ -51,13 +51,20 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
     if (!isOpen) return null;
 
+    // 백엔드에서 받은 링크의 localhost를 현재 도메인으로 치환
+    const normalizeInviteLink = (link: string): string => {
+        if (typeof window === 'undefined') return link;
+        const currentOrigin = window.location.origin;
+        return link.replace(/^https?:\/\/localhost:\d+/, currentOrigin);
+    };
+
     // 초대 링크 생성
     const handleGenerateLink = async () => {
         setIsGenerating(true);
         setInviteLink('');
         try {
             const response = await createInvitation(workspaceId, selectedRole, selectedExpiry);
-            setInviteLink(response.invite_link);
+            setInviteLink(normalizeInviteLink(response.invite_link));
             setExpiresAt(response.expires_at);
         } catch (error) {
             console.error('Failed to generate invitation link:', error);
