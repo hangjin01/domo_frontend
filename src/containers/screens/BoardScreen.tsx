@@ -43,9 +43,8 @@ import { subscribeOnlineMembers } from '@/src/models/api/workspace';
 
 import {
     LayoutGrid, Calendar as CalendarIcon, StretchHorizontal, Settings,
-    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare, UserPlus
+    ChevronLeft, ChevronRight, ArrowLeft, Loader2, AlertCircle, MessageSquare
 } from 'lucide-react';
-import { InviteModal } from '@/src/views/workspace';
 
 interface BoardScreenProps {
     project: Project;
@@ -87,9 +86,6 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     const [showFilePanel, setShowFilePanel] = useState(false);
     const [draggingFile, setDraggingFile] = useState<FileMetadata | null>(null);
     const [filePanelRefreshKey, setFilePanelRefreshKey] = useState(0);
-
-    // 초대 모달 상태
-    const [showInviteModal, setShowInviteModal] = useState(false);
 
     // 로딩 & 에러 상태
     const [isLoading, setIsLoading] = useState(true);
@@ -840,13 +836,6 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                             <MessageSquare size={20} strokeWidth={viewMode === 'community' ? 2.5 : 2} />
                             {sidebarOpen && <span className="font-medium">Community</span>}
                         </button>
-                        <button
-                            onClick={() => setShowInviteModal(true)}
-                            className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/5"
-                        >
-                            <UserPlus size={20} strokeWidth={2} />
-                            {sidebarOpen && <span className="font-medium">Invite</span>}
-                        </button>
                     </div>
 
                     <div className="p-4 mt-auto">
@@ -953,14 +942,6 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                     currentUserId={user?.id ?? 0}
                 />
             )}
-
-            {/* Invite Modal */}
-            <InviteModal
-                workspaceId={project.workspace_id ?? 0}
-                workspaceName={project.workspace}
-                isOpen={showInviteModal}
-                onClose={() => setShowInviteModal(false)}
-            />
         </div>
     );
 }
