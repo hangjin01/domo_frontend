@@ -86,6 +86,12 @@ export interface UsePendingSyncOptions<T = unknown, S = unknown> {
   onBatchRollback?: (items: BatchChangeItem[]) => void;
   // Batch API 함수 (card-position 타입에만 사용)
   batchApiCall?: (payloads: BatchCardPositionPayload[]) => Promise<void>;
+  /**
+   * [Race Condition Guard] 엔티티 Lock 체크 함수
+   * 해당 엔티티가 현재 드래그/상호작용 중인지 확인
+   * true를 반환하면 해당 엔티티에 대한 롤백을 스킵함
+   */
+  isEntityLocked?: (entityId: number) => boolean;
 }
 
 export interface UsePendingSyncReturn<T = unknown, S = unknown> {
@@ -142,6 +148,7 @@ export function usePendingSync<T = unknown, S = unknown>(
     onRollback,
     onBatchRollback,
     batchApiCall,
+    isEntityLocked, // [Race Condition Guard] Lock 체크 함수
   } = options;
 
   // 상태
@@ -167,6 +174,7 @@ export function usePendingSync<T = unknown, S = unknown>(
   const onRollbackRef = useRef(onRollback);
   const onBatchRollbackRef = useRef(onBatchRollback);
   const batchApiCallRef = useRef(batchApiCall);
+  const isEntityLockedRef = useRef(isEntityLocked); // [Race Condition Guard]
 
   // 콜백 refs 업데이트
   useEffect(() => {
@@ -176,7 +184,8 @@ export function usePendingSync<T = unknown, S = unknown>(
     onRollbackRef.current = onRollback;
     onBatchRollbackRef.current = onBatchRollback;
     batchApiCallRef.current = batchApiCall;
-  }, [onSyncStart, onSyncSuccess, onSyncError, onRollback, onBatchRollback, batchApiCall]);
+    isEntityLockedRef.current = isEntityLocked; // [Race Condition Guard]
+  }, [onSyncStart, onSyncSuccess, onSyncError, onRollback, onBatchRollback, batchApiCall, isEntityLocked]);
 
   // pendingChanges 동기화
   useEffect(() => {
@@ -232,7 +241,21 @@ export function usePendingSync<T = unknown, S = unknown>(
       } else {
         // 최대 재시도 초과 - 롤백
         console.log('[Optimistic] Batch 최대 재시도 초과, 롤백 실행');
-        onBatchRollbackRef.current?.(batch.items);
+
+        // [Race Condition Guard] Lock된 엔티티는 롤백에서 제외
+        const isLockedFn = isEntityLockedRef.current;
+        if (isLockedFn) {
+          const lockedIds = batch.items.filter(item => isLockedFn(item.entityId)).map(item => item.entityId);
+          if (lockedIds.length > 0) {
+            console.log('[Optimistic] Lock된 엔티티 롤백 스킵:', lockedIds);
+          }
+          const itemsToRollback = batch.items.filter(item => !isLockedFn(item.entityId));
+          if (itemsToRollback.length > 0) {
+            onBatchRollbackRef.current?.(itemsToRollback);
+          }
+        } else {
+          onBatchRollbackRef.current?.(batch.items);
+        }
 
         // Batch 상태 초기화
         setBatchChange(null);
@@ -289,7 +312,15 @@ export function usePendingSync<T = unknown, S = unknown>(
             error,
             canRetry: false,
           });
-          onRollbackRef.current?.(change);
+
+          // [Race Condition Guard] Lock된 엔티티는 롤백 스킵
+          const isLockedFn = isEntityLockedRef.current;
+          if (isLockedFn && isLockedFn(change.entityId)) {
+            console.log('[Optimistic] Lock된 엔티티 롤백 스킵:', change.entityId);
+          } else {
+            onRollbackRef.current?.(change);
+          }
+
           apiCallsRef.current.delete(change.id);
         }
       }
