@@ -454,3 +454,39 @@ export interface PostUpdateRequest {
 export interface PostCommentCreateRequest {
   content: string;
 }
+
+// ============================================
+// 10. 초대 (Invitation)
+// ============================================
+
+export interface Invitation {
+  id: number;
+  token: string;
+  workspace_id: number;
+  inviter_id: number;
+  role: string;
+  target_email?: string;
+  expires_at: string;
+  created_at: string;
+  is_used: boolean;
+}
+
+export interface InvitationCreateRequest {
+  role?: string;
+  expires_in_hours?: number;
+}
+
+export interface InvitationResponse {
+  invite_link: string;
+  expires_at: string;
+}
+
+export interface InvitationInfo {
+  workspace_name: string;
+  inviter_name: string;
+  role: string;
+}
+
+export interface DirectInviteRequest {
+  email: string;
+}

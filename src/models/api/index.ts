@@ -33,8 +33,10 @@ export {
   subscribeOnlineMembers,
   addWorkspaceMember,
   removeWorkspaceMember,
+  // 초대
   createInvitation,
   acceptInvitation,
+  getInvitationInfo,
   getProjectMembers,
 } from './workspace';
 

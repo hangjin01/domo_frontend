@@ -534,6 +534,31 @@ export async function acceptInvitation(token: string): Promise<{ message: string
 }
 
 /**
+ * 초대 정보 조회 (수락 전 확인용)
+ */
+export async function getInvitationInfo(token: string): Promise<{
+  workspace_name: string;
+  inviter_name: string;
+  role: string;
+}> {
+  if (API_CONFIG.USE_MOCK) {
+    await mockDelay(200);
+    return {
+      workspace_name: 'Mock 워크스페이스',
+      inviter_name: '김도모',
+      role: 'member',
+    };
+  }
+
+  // 백엔드: GET /api/invitations/{token}
+  return apiFetch<{
+    workspace_name: string;
+    inviter_name: string;
+    role: string;
+  }>(`/invitations/${token}`);
+}
+
+/**
  * 프로젝트 멤버 조회 (= 워크스페이스 멤버와 동일)
  * 프로젝트가 속한 워크스페이스의 멤버를 반환합니다.
  */

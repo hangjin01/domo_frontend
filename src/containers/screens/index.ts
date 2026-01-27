@@ -10,3 +10,6 @@ export { default as ProjectSelectScreen } from './ProjectSelectScreen';
 
 // Board Screen
 export { BoardScreen } from './BoardScreen';
+
+// Invitation Screen
+export { InviteAcceptScreen } from './InviteAcceptScreen';
