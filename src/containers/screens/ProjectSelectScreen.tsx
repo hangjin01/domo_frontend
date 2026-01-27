@@ -36,10 +36,12 @@ import {
     LayoutGrid,
     ChevronDown,
     MessageSquare,
+    UserPlus,
 } from 'lucide-react';
 import { Mascot } from '@/src/views/common';
 import { SettingsView } from '@/src/views/profile';
 import { CommunityBoard } from '@/src/views/community';
+import { InviteModal } from '@/src/views/workspace';
 import { getImageUrl } from '@/src/models/utils/image';
 
 // ==========================================
@@ -408,6 +410,9 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
     const [activities, setActivities] = useState<ActivityLog[]>([]);
     const [mypageLoading, setMypageLoading] = useState(false);
 
+    // 초대 모달 상태
+    const [showInviteModal, setShowInviteModal] = useState(false);
+
     // 프로필 메뉴
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -598,6 +603,14 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
                     >
                         <MessageSquare size={20} />
                         <span>커뮤니티</span>
+                    </button>
+
+                    <button
+                        onClick={() => setShowInviteModal(true)}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    >
+                        <UserPlus size={20} />
+                        <span>팀원 초대</span>
                     </button>
                 </nav>
 
@@ -832,6 +845,14 @@ export function ProjectSelectScreen({ workspace, user, onSelectProject, onBack, 
                     onDelete={handleProjectDeleted}
                 />
             )}
+
+            {/* 초대 모달 */}
+            <InviteModal
+                workspaceId={workspace.id}
+                workspaceName={workspace.name}
+                isOpen={showInviteModal}
+                onClose={() => setShowInviteModal(false)}
+            />
         </div>
     );
 }
