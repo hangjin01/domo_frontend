@@ -1,4 +1,4 @@
-// src/types/index.ts
+// src/models/types/index.ts
 
 // ============================================
 // 1. 공통/기본 타입 (User, Auth)
@@ -269,94 +269,7 @@ export interface VerifyResponse {
 }
 
 // ============================================
-// 6. 백엔드 API 스키마 (백엔드 응답과 1:1 매칭)
-// ============================================
-
-// 백엔드 UserResponse
-export interface BackendUserResponse {
-  id: number;
-  email: string;
-  name: string;
-  is_student_verified: boolean;
-  profile_image?: string | null;
-}
-
-// 백엔드 FileVersionResponse
-export interface BackendFileVersionResponse {
-  id: number;
-  version: number;
-  file_size: number;
-  created_at: string;
-  uploader_id: number;
-}
-
-// 백엔드 FileResponse
-export interface BackendFileResponse {
-  id: number;
-  project_id: number;
-  filename: string;
-  owner_id: number;
-  created_at: string;
-  latest_version?: BackendFileVersionResponse | null;
-}
-
-// 백엔드 CardCommentResponse
-export interface BackendCardCommentResponse {
-  id: number;
-  card_id: number;
-  user_id: number;
-  content: string;
-  created_at: string;
-  updated_at: string;
-  user?: BackendUserResponse | null;
-}
-
-// 백엔드 CardResponse (핵심!)
-export interface BackendCardResponse {
-  id: number;
-  title: string;
-  content: string | null;
-  order: number;
-  column_id: number;
-  card_type: string;          // "task" | "memo"
-  x: number;
-  y: number;
-  created_at: string;
-  updated_at: string;
-  assignees: BackendUserResponse[];
-  files: BackendFileResponse[];
-  start_date: string | null;
-  due_date: string | null;
-}
-
-// 백엔드 BoardColumnResponse
-export interface BackendBoardColumnResponse {
-  id: number;
-  title: string;
-  order: number;
-  project_id: number;
-}
-
-// 백엔드 Board 응답 (컬럼 + 카드)
-export interface BackendBoardResponse {
-  column: BackendBoardColumnResponse;
-  cards: BackendCardResponse[];
-}
-
-// 백엔드 CardConnectionResponse
-export interface BackendCardConnectionResponse {
-  id: number;
-  from: number;       // serialization_alias로 변환됨
-  to: number;
-  boardId: number;
-  style: string;
-  shape: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-}
-
-// ============================================
-// 7. Global Declarations
+// 6. Global Declarations
 // ============================================
 
 declare global {
@@ -366,7 +279,7 @@ declare global {
 }
 
 // ============================================
-// 8. 음성 채팅 / WebRTC
+// 7. 음성 채팅 / WebRTC
 // ============================================
 
 export interface SignalData {
@@ -384,7 +297,6 @@ export interface VoiceChatState {
   activePeerIds: number[];
 }
 
-// 음성 채팅 참여자 정보 (Member와 매핑)
 export interface VoiceParticipant {
   id: number;
   name: string;
@@ -394,7 +306,6 @@ export interface VoiceParticipant {
   isCurrentUser: boolean;
 }
 
-// 음성 채팅 에러 타입
 export type VoiceChatErrorType =
     | 'permission_denied'
     | 'not_supported'
@@ -407,7 +318,7 @@ export interface VoiceChatError {
 }
 
 // ============================================
-// 9. 게시판 (Community Board)
+// 8. 게시판 (Community Board)
 // ============================================
 
 export interface PostComment {
@@ -416,10 +327,8 @@ export interface PostComment {
   user_id: number;
   content: string;
   created_at: string;
-
-  // Join된 데이터 (선택적)
   user?: User;
-  user_name?: string; // 백엔드에서 직접 반환하는 경우
+  user_name?: string;
 }
 
 export interface Post {
@@ -431,14 +340,11 @@ export interface Post {
   image_url?: string;
   created_at: string;
   updated_at?: string;
-
-  // Join된 데이터 (선택적)
   user?: User;
-  user_name?: string; // 백엔드에서 user_name 포맷으로 줄 때 사용
+  user_name?: string;
   comments?: PostComment[];
 }
 
-// API 요청/응답 타입
 export interface PostCreateRequest {
   title: string;
   content: string;
@@ -456,7 +362,7 @@ export interface PostCommentCreateRequest {
 }
 
 // ============================================
-// 10. 초대 (Invitation)
+// 9. 초대 (Invitation)
 // ============================================
 
 export interface Invitation {
@@ -492,7 +398,7 @@ export interface DirectInviteRequest {
 }
 
 // ============================================
-// 11. WebSocket 이벤트 타입 (Board 실시간 동기화)
+// 10. WebSocket 이벤트 타입 (Board 실시간 동기화)
 // ============================================
 
 /**
@@ -514,7 +420,7 @@ export type BoardEventType =
     | 'FILE_DELETED';
 
 /**
- * 백엔드 WebSocket 메시지 구조 (Snake Case)
+ * 백엔드 WebSocket 메시지 구조
  */
 export interface BoardSocketMessage<T = unknown> {
   type: BoardEventType;
@@ -616,16 +522,10 @@ export type SocketConnectionState = 'connecting' | 'connected' | 'disconnected' 
  * useBoardSocket 훅 반환 타입
  */
 export interface UseBoardSocketReturn {
-  /** WebSocket 연결 상태 */
   connectionState: SocketConnectionState;
-  /** 연결 여부 (connected 상태인지) */
   isConnected: boolean;
-  /** 마지막 에러 메시지 */
   lastError: string | null;
-  /** 재연결 시도 횟수 */
   reconnectAttempts: number;
-  /** 수동 재연결 시도 */
   reconnect: () => void;
-  /** 연결 해제 */
   disconnect: () => void;
 }

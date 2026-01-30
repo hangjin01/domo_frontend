@@ -1,6 +1,5 @@
-import type { FileMetadata, FileVersion, TaskFile } from '../types';
+import type { FileMetadata, FileVersion } from '../types';
 import { API_CONFIG, apiFetch, apiUpload, mockDelay } from './config';
-import { mapBackendFileToTaskFile } from './mappers';
 
 // ============================================
 // 파일 관리 API
@@ -12,7 +11,6 @@ import { mapBackendFileToTaskFile } from './mappers';
 export async function getProjectFiles(projectId: number): Promise<FileMetadata[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    // Mock ID를 projectId 기반으로 고유하게 생성
     const baseId = projectId * 1000;
     return [
       {
@@ -60,13 +58,8 @@ export async function getProjectFiles(projectId: number): Promise<FileMetadata[]
     ];
   }
 
-  // 백엔드: GET /api/projects/{id}/files
   return apiFetch<FileMetadata[]>(`/projects/${projectId}/files`);
 }
-
-// ============================================
-// 파일 관리 API
-// ============================================
 
 /**
  * 프로젝트에 파일 업로드
@@ -93,7 +86,6 @@ export async function uploadFile(
     };
   }
 
-  // 백엔드: POST /api/projects/{id}/files (multipart/form-data)
   const formData = new FormData();
   formData.append('file', file);
 
@@ -113,9 +105,8 @@ export function getFileDownloadUrl(versionId: number): string {
 export async function getFileVersions(fileId: number): Promise<FileVersion[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    // Mock: 파일 ID에 따라 다른 버전 수 반환
     const now = new Date();
-    const versions: FileVersion[] = [
+    return [
       {
         id: fileId * 100 + 3,
         version: 3,
@@ -138,10 +129,8 @@ export async function getFileVersions(fileId: number): Promise<FileVersion[]> {
         uploader_id: 2,
       },
     ];
-    return versions;
   }
 
-  // 백엔드: GET /api/files/{id}/versions
   return apiFetch<FileVersion[]>(`/files/${fileId}/versions`);
 }
 
@@ -154,7 +143,6 @@ export async function deleteFile(fileId: number): Promise<void> {
     return;
   }
 
-  // 백엔드: DELETE /api/files/{id}
   await apiFetch<{ message: string }>(`/files/${fileId}`, {
     method: 'DELETE',
   });
@@ -172,7 +160,6 @@ export async function attachFileToCard(
     return;
   }
 
-  // 백엔드: POST /api/cards/{card_id}/files/{file_id}
   await apiFetch<void>(`/cards/${cardId}/files/${fileId}`, {
     method: 'POST',
   });
@@ -190,7 +177,6 @@ export async function detachFileFromCard(
     return;
   }
 
-  // 백엔드: DELETE /api/cards/{card_id}/files/{file_id}
   await apiFetch<{ message: string }>(`/cards/${cardId}/files/${fileId}`, {
     method: 'DELETE',
   });
