@@ -395,11 +395,11 @@ export interface VoiceParticipant {
 }
 
 // 음성 채팅 에러 타입
-export type VoiceChatErrorType = 
-  | 'permission_denied'
-  | 'not_supported'
-  | 'connection_failed'
-  | 'unknown';
+export type VoiceChatErrorType =
+    | 'permission_denied'
+    | 'not_supported'
+    | 'connection_failed'
+    | 'unknown';
 
 export interface VoiceChatError {
   type: VoiceChatErrorType;
@@ -489,4 +489,143 @@ export interface InvitationInfo {
 
 export interface DirectInviteRequest {
   email: string;
+}
+
+// ============================================
+// 11. WebSocket 이벤트 타입 (Board 실시간 동기화)
+// ============================================
+
+/**
+ * 보드 WebSocket 이벤트 타입
+ */
+export type BoardEventType =
+    | 'CARD_CREATED'
+    | 'CARD_UPDATED'
+    | 'CARD_DELETED'
+    | 'CARD_BATCH_UPDATED'
+    | 'COLUMN_CREATED'
+    | 'COLUMN_UPDATED'
+    | 'COLUMN_DELETED'
+    | 'CONNECTION_CREATED'
+    | 'CONNECTION_UPDATED'
+    | 'CONNECTION_DELETED'
+    | 'FILE_UPLOADED'
+    | 'FILES_UPLOADED'
+    | 'FILE_DELETED';
+
+/**
+ * 백엔드 WebSocket 메시지 구조 (Snake Case)
+ */
+export interface BoardSocketMessage<T = unknown> {
+  type: BoardEventType;
+  data: T;
+}
+
+/**
+ * 백엔드 Card 데이터 (Snake Case - WebSocket 수신용)
+ */
+export interface BackendCardSocketData {
+  id: number;
+  title: string;
+  content: string | null;
+  order: number;
+  column_id: number | null;
+  project_id: number;
+  card_type: string;
+  x: number;
+  y: number;
+  created_at: string;
+  updated_at: string;
+  start_date: string | null;
+  due_date: string | null;
+  assignees?: Array<{
+    id: number;
+    email: string;
+    name: string;
+    is_student_verified: boolean;
+    profile_image?: string | null;
+  }>;
+  files?: Array<{
+    id: number;
+    project_id: number;
+    filename: string;
+    owner_id: number;
+    created_at: string;
+    latest_version?: {
+      id: number;
+      version: number;
+      file_size: number;
+      created_at: string;
+      uploader_id: number;
+    } | null;
+  }>;
+}
+
+/**
+ * 백엔드 Column 데이터 (Snake Case - WebSocket 수신용)
+ */
+export interface BackendColumnSocketData {
+  id: number;
+  title: string;
+  order: number;
+  project_id: number;
+  local_x?: number;
+  local_y?: number;
+  width?: number;
+  height?: number;
+  parent_id?: number | null;
+  depth?: number;
+  color?: string;
+  collapsed?: boolean;
+  scale_x?: number;
+  scale_y?: number;
+  rotation?: number;
+}
+
+/**
+ * 백엔드 Connection 데이터 (WebSocket 수신용)
+ */
+export interface BackendConnectionSocketData {
+  id: number;
+  from?: number;
+  to?: number;
+  from_card_id?: number;
+  to_card_id?: number;
+  board_id?: number;
+  style?: string;
+  shape?: string;
+  source_handle?: string;
+  target_handle?: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
+/**
+ * 삭제 이벤트 데이터
+ */
+export interface DeleteEventData {
+  id: number;
+}
+
+/**
+ * WebSocket 연결 상태
+ */
+export type SocketConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
+
+/**
+ * useBoardSocket 훅 반환 타입
+ */
+export interface UseBoardSocketReturn {
+  /** WebSocket 연결 상태 */
+  connectionState: SocketConnectionState;
+  /** 연결 여부 (connected 상태인지) */
+  isConnected: boolean;
+  /** 마지막 에러 메시지 */
+  lastError: string | null;
+  /** 재연결 시도 횟수 */
+  reconnectAttempts: number;
+  /** 수동 재연결 시도 */
+  reconnect: () => void;
+  /** 연결 해제 */
+  disconnect: () => void;
 }
