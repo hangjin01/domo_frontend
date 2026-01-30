@@ -5,8 +5,10 @@ import { Task, Group } from '@/src/models/types';
 import {
     GridConfig,
     DEFAULT_GRID_CONFIG,
+    indexToRelativePosition,
     indexToAbsolutePosition,
     absolutePositionToIndex,
+    relativeToAbsolute,
     isPointInGroup,
 } from '@/src/models/constants/grid';
 
@@ -22,7 +24,6 @@ export interface DragContext {
     startY: number;
     offsetX: number;
     offsetY: number;
-    /** 드래그 시작 시점의 카드 상태 스냅샷 (롤백용) */
     snapshot: CardSnapshot;
 }
 
@@ -35,8 +36,8 @@ export interface CardSnapshot {
 export interface DropPreview {
     groupId: number;
     index: number;
-    x: number;
-    y: number;
+    absoluteX: number;
+    absoluteY: number;
 }
 
 export interface CardPosition {
@@ -50,7 +51,10 @@ export interface CardPosition {
     translateY?: number;
 }
 
-/** 드래그 종료 결과 */
+export interface CardTransitions {
+    [taskId: number]: { x: number; y: number };
+}
+
 export interface DragEndResult {
     taskId: number;
     action: 'move-to-group' | 'reorder-in-group' | 'remove-from-group' | 'free-move' | 'no-change';
@@ -58,30 +62,22 @@ export interface DragEndResult {
     newX: number;
     newY: number;
     snapshot: CardSnapshot;
-    /** 그룹 내 재정렬 시 영향받은 다른 카드들 (원본 좌표 포함) */
     affectedCards?: Array<{
         taskId: number;
         newX: number;
         newY: number;
-        /** 변경 전 원본 X 좌표 (롤백용) */
         originalX: number;
-        /** 변경 전 원본 Y 좌표 (롤백용) */
         originalY: number;
-        /** 변경 전 column_id (롤백용) */
         originalColumnId: number | undefined;
     }>;
 }
 
-// Re-export for external use
 export type { GridConfig };
 
 // ============================================
 // 유틸리티 함수
 // ============================================
 
-/**
- * 그룹 내 카드들을 y좌표 기준으로 정렬
- */
 function getGroupCardsSorted(tasks: Task[], groupId: number): Task[] {
     return tasks
         .filter(t => t.column_id === groupId)
@@ -91,6 +87,19 @@ function getGroupCardsSorted(tasks: Task[], groupId: number): Task[] {
             if (yA !== yB) return yA - yB;
             return (a.x ?? 0) - (b.x ?? 0);
         });
+}
+
+function shallowEqualTransitions(a: CardTransitions, b: CardTransitions): boolean {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    for (const key of keysA) {
+        const numKey = Number(key);
+        if (!b[numKey] || a[numKey].x !== b[numKey].x || a[numKey].y !== b[numKey].y) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // ============================================
@@ -106,26 +115,23 @@ export function useSortableGrid(
 ) {
     const gridConfig = useMemo(() => ({ ...DEFAULT_GRID_CONFIG, ...config }), [config]);
 
-    // ========== 상태 ==========
     const [dragContext, setDragContext] = useState<DragContext | null>(null);
     const [dropPreview, setDropPreview] = useState<DropPreview | null>(null);
-    const [cardTransitions, setCardTransitions] = useState<Map<number, { x: number; y: number }>>(new Map());
-
-    /** 자유 카드 드래그 시 하이라이트될 그룹 ID */
+    const [cardTransitions, setCardTransitions] = useState<CardTransitions>({});
     const [highlightedGroupId, setHighlightedGroupId] = useState<number | null>(null);
 
-    // ========== Refs (최신 상태 참조) ==========
     const tasksRef = useRef(tasks);
     tasksRef.current = tasks;
 
     const groupsRef = useRef(groups);
     groupsRef.current = groups;
 
-    // ========== 카드 위치 계산 (렌더링용) ==========
+    // ========== 카드 위치 계산 (렌더링용 - 절대 좌표 반환) ==========
     const cardPositions = useMemo((): CardPosition[] => {
         const positions: CardPosition[] = [];
+        const currentGroups = groupsRef.current;
 
-        for (const group of groups) {
+        for (const group of currentGroups) {
             const groupCards = getGroupCardsSorted(tasks, group.id);
             const hasPreviewInGroup = dropPreview?.groupId === group.id;
             const previewIndex = dropPreview?.index ?? -1;
@@ -133,15 +139,14 @@ export function useSortableGrid(
             let visualIndex = 0;
 
             for (let i = 0; i <= groupCards.length; i++) {
-                // 플레이스홀더 삽입 위치
                 if (hasPreviewInGroup && i === previewIndex) {
-                    const pos = indexToAbsolutePosition(visualIndex, group.x, group.y, gridConfig);
+                    const absolutePos = indexToAbsolutePosition(visualIndex, group.x, group.y, gridConfig);
                     positions.push({
-                        taskId: -1, // placeholder
+                        taskId: -1,
                         groupId: group.id,
                         index: previewIndex,
-                        x: pos.x,
-                        y: pos.y,
+                        x: absolutePos.x,
+                        y: absolutePos.y,
                         isPlaceholder: true,
                     });
                     visualIndex++;
@@ -150,19 +155,33 @@ export function useSortableGrid(
                 if (i < groupCards.length) {
                     const task = groupCards[i];
 
-                    // 드래그 중인 카드는 별도 렌더링하므로 건너뜀
                     if (dragContext && task.id === dragContext.taskId) {
                         continue;
                     }
 
-                    const transition = cardTransitions.get(task.id);
+                    const transition = cardTransitions[task.id];
+
+                    // [마이그레이션 호환성] 기존 절대 좌표 데이터 자동 감지 및 변환
+                    // 카드 좌표가 그룹 위치보다 크면 기존 절대 좌표 데이터로 간주
+                    const cardX = task.x ?? 0;
+                    const cardY = task.y ?? 0;
+                    const isLegacyAbsoluteCoord = cardX >= group.x || cardY >= group.y;
+
+                    let absolutePos: { x: number; y: number };
+                    if (isLegacyAbsoluteCoord) {
+                        // 기존 절대 좌표 데이터: 그대로 사용
+                        absolutePos = { x: cardX, y: cardY };
+                    } else {
+                        // 새 상대 좌표 데이터: 절대 좌표로 변환
+                        absolutePos = relativeToAbsolute(cardX, cardY, group.x, group.y);
+                    }
 
                     positions.push({
                         taskId: task.id,
                         groupId: group.id,
                         index: i,
-                        x: task.x ?? 0,
-                        y: task.y ?? 0,
+                        x: absolutePos.x,
+                        y: absolutePos.y,
                         translateX: transition?.x ?? 0,
                         translateY: transition?.y ?? 0,
                     });
@@ -171,7 +190,6 @@ export function useSortableGrid(
             }
         }
 
-        // 그룹에 속하지 않은 자유 배치 카드들
         const freeCards = tasks.filter(t => !t.column_id);
         for (const task of freeCards) {
             if (dragContext && task.id === dragContext.taskId) continue;
@@ -210,7 +228,6 @@ export function useSortableGrid(
             ? getGroupCardsSorted(tasksRef.current, sourceGroup.id).findIndex(t => t.id === taskId)
             : -1;
 
-        // 스냅샷 캡처 (롤백용)
         const snapshot: CardSnapshot = {
             x: task.x ?? 0,
             y: task.y ?? 0,
@@ -228,41 +245,43 @@ export function useSortableGrid(
             snapshot,
         });
 
-        // 그룹 내 카드면 초기 드롭 프리뷰 설정
         if (sourceGroupId !== null && sourceIndex !== -1 && sourceGroup) {
-            const pos = indexToAbsolutePosition(sourceIndex, sourceGroup.x, sourceGroup.y, gridConfig);
+            const absolutePos = indexToAbsolutePosition(sourceIndex, sourceGroup.x, sourceGroup.y, gridConfig);
             setDropPreview({
                 groupId: sourceGroupId,
                 index: sourceIndex,
-                x: pos.x,
-                y: pos.y,
+                absoluteX: absolutePos.x,
+                absoluteY: absolutePos.y,
             });
         }
     }, [gridConfig]);
 
     // ========== 카드 밀어내기 트랜지션 계산 ==========
-    // NOTE: updateDrag에서 참조하므로 반드시 updateDrag 앞에 정의해야 함
     const calculateShiftTransitions = useCallback((
         groupId: number,
         dropIndex: number,
         groupCards: Task[],
         group: Group
     ) => {
-        const newTransitions = new Map<number, { x: number; y: number }>();
+        const newTransitions: CardTransitions = {};
 
-        // dropIndex 이후의 카드들을 아래로 밀어냄
         for (let i = dropIndex; i < groupCards.length; i++) {
             const task = groupCards[i];
-            const currentPos = indexToAbsolutePosition(i, group.x, group.y, gridConfig);
-            const shiftedPos = indexToAbsolutePosition(i + 1, group.x, group.y, gridConfig);
+            const currentPos = indexToRelativePosition(i, gridConfig);
+            const shiftedPos = indexToRelativePosition(i + 1, gridConfig);
 
-            newTransitions.set(task.id, {
+            newTransitions[task.id] = {
                 x: shiftedPos.x - currentPos.x,
                 y: shiftedPos.y - currentPos.y,
-            });
+            };
         }
 
-        setCardTransitions(newTransitions);
+        setCardTransitions(prev => {
+            if (shallowEqualTransitions(prev, newTransitions)) {
+                return prev;
+            }
+            return newTransitions;
+        });
     }, [gridConfig]);
 
     // ========== 드래그 중 (위치 업데이트) ==========
@@ -274,15 +293,12 @@ export function useSortableGrid(
     ): { x: number; y: number } => {
         if (!dragContext) return { x: 0, y: 0 };
 
-        // 캔버스 내 절대 좌표 계산
         const dragX = clientX + canvasScrollX - dragContext.offsetX;
         const dragY = clientY + canvasScrollY - dragContext.offsetY;
 
-        // 카드 중심점
         const centerX = dragX + gridConfig.cardWidth / 2;
         const centerY = dragY + gridConfig.cardHeight / 2;
 
-        // 타겟 그룹 찾기
         let targetGroup: Group | null = null;
         for (const group of groupsRef.current) {
             if (isPointInGroup(centerX, centerY, group)) {
@@ -292,7 +308,6 @@ export function useSortableGrid(
         }
 
         if (targetGroup) {
-            // 그룹 내 드롭 위치 계산
             const groupCards = getGroupCardsSorted(tasksRef.current, targetGroup.id)
                 .filter(t => t.id !== dragContext.taskId);
 
@@ -305,24 +320,20 @@ export function useSortableGrid(
                 gridConfig
             );
 
-            const pos = indexToAbsolutePosition(dropIndex, targetGroup.x, targetGroup.y, gridConfig);
+            const absolutePos = indexToAbsolutePosition(dropIndex, targetGroup.x, targetGroup.y, gridConfig);
 
             setDropPreview({
                 groupId: targetGroup.id,
                 index: dropIndex,
-                x: pos.x,
-                y: pos.y,
+                absoluteX: absolutePos.x,
+                absoluteY: absolutePos.y,
             });
 
-            // 카드 밀어내기 트랜지션 계산
             calculateShiftTransitions(targetGroup.id, dropIndex, groupCards, targetGroup);
-
-            // 그룹 하이라이트 (자유 카드가 그룹으로 진입 시)
             setHighlightedGroupId(targetGroup.id);
         } else {
-            // 그룹 밖
             setDropPreview(null);
-            setCardTransitions(new Map());
+            setCardTransitions({});
             setHighlightedGroupId(null);
         }
 
@@ -343,7 +354,6 @@ export function useSortableGrid(
         const groupCards = getGroupCardsSorted(tasksRef.current, preview.groupId)
             .filter(t => t.id !== ctx.taskId);
 
-        // 새 순서 배열 생성
         const task = tasksRef.current.find(t => t.id === ctx.taskId);
         if (!task) {
             throw new Error(`Task not found: ${ctx.taskId}`);
@@ -352,7 +362,6 @@ export function useSortableGrid(
         const newOrder = [...groupCards];
         newOrder.splice(preview.index, 0, task);
 
-        // 영향받은 카드들 추적 (원본 좌표 포함)
         const affectedCards: Array<{
             taskId: number;
             newX: number;
@@ -362,31 +371,28 @@ export function useSortableGrid(
             originalColumnId: number | undefined;
         }> = [];
 
-        // 모든 카드의 절대 좌표 재계산
         const updatedTasks = tasksRef.current.map(t => {
             const orderIndex = newOrder.findIndex(ot => ot.id === t.id);
 
             if (orderIndex !== -1) {
-                const absolutePos = indexToAbsolutePosition(orderIndex, group.x, group.y, gridConfig);
+                const relativePos = indexToRelativePosition(orderIndex, gridConfig);
 
-                // 드래그한 카드가 아니고, 좌표가 변경된 경우 추적
-                // 중요: onTasksUpdate 호출 전에 원본 좌표를 캡처
-                if (t.id !== ctx.taskId && (t.x !== absolutePos.x || t.y !== absolutePos.y)) {
+                if (t.id !== ctx.taskId && (t.x !== relativePos.x || t.y !== relativePos.y)) {
                     affectedCards.push({
                         taskId: t.id,
-                        newX: absolutePos.x,
-                        newY: absolutePos.y,
-                        originalX: t.x ?? 0,        // 변경 전 원본 좌표
-                        originalY: t.y ?? 0,        // 변경 전 원본 좌표
-                        originalColumnId: t.column_id,  // 변경 전 column_id
+                        newX: relativePos.x,
+                        newY: relativePos.y,
+                        originalX: t.x ?? 0,
+                        originalY: t.y ?? 0,
+                        originalColumnId: t.column_id,
                     });
                 }
 
                 return {
                     ...t,
                     column_id: preview.groupId,
-                    x: absolutePos.x,
-                    y: absolutePos.y,
+                    x: relativePos.x,
+                    y: relativePos.y,
                 };
             }
 
@@ -395,7 +401,6 @@ export function useSortableGrid(
 
         onTasksUpdate(updatedTasks);
 
-        // 결과 생성
         const updatedTask = updatedTasks.find(t => t.id === ctx.taskId);
         const isNewGroup = ctx.sourceGroupId !== preview.groupId;
 
@@ -421,14 +426,17 @@ export function useSortableGrid(
         const wasInGroup = ctx.sourceGroupId !== null;
 
         if (wasInGroup) {
-            // 그룹에서 제거
+            const sourceGroup = groupsRef.current.find(g => g.id === ctx.sourceGroupId);
+            const finalX = currentDragPos?.x ?? (sourceGroup ? sourceGroup.x + snapshot.x : snapshot.x);
+            const finalY = currentDragPos?.y ?? (sourceGroup ? sourceGroup.y + snapshot.y : snapshot.y);
+
             const updatedTasks = tasksRef.current.map(t => {
                 if (t.id === ctx.taskId) {
                     return {
                         ...t,
                         column_id: undefined,
-                        x: newX,
-                        y: newY,
+                        x: finalX,
+                        y: finalY,
                     };
                 }
                 return t;
@@ -440,13 +448,12 @@ export function useSortableGrid(
                 taskId: ctx.taskId,
                 action: 'remove-from-group',
                 newGroupId: null,
-                newX,
-                newY,
+                newX: finalX,
+                newY: finalY,
                 snapshot,
             };
         }
 
-        // 자유 배치 카드 이동
         const hasMoved = newX !== snapshot.x || newY !== snapshot.y;
 
         if (hasMoved) {
@@ -465,7 +472,6 @@ export function useSortableGrid(
             };
         }
 
-        // 변경 없음
         return {
             taskId: ctx.taskId,
             action: 'no-change',
@@ -492,20 +498,16 @@ export function useSortableGrid(
 
         try {
             if (dropPreview) {
-                // ========== 그룹 내 배치 ==========
                 result = handleDropInGroup(dragContext, dropPreview, snapshot);
             } else {
-                // ========== 그룹 밖 드롭 ==========
                 result = handleDropOutsideGroup(dragContext, snapshot, currentDragPos);
             }
 
-            // 변경이 있으면 콜백 호출
             if (onDragEnd && result.action !== 'no-change') {
                 onDragEnd(result);
             }
         } catch (error) {
             console.error('[useSortableGrid] endDrag error:', error);
-            // 에러 시 원래 위치로 롤백
             onTasksUpdate(tasksRef.current.map(t =>
                 t.id === dragContext.taskId
                     ? { ...t, x: snapshot.x, y: snapshot.y, column_id: snapshot.column_id }
@@ -519,7 +521,6 @@ export function useSortableGrid(
     // ========== 드래그 취소 ==========
     const cancelDrag = useCallback(() => {
         if (dragContext) {
-            // 원래 위치로 복원
             onTasksUpdate(tasksRef.current.map(t =>
                 t.id === dragContext.taskId
                     ? {
@@ -538,7 +539,7 @@ export function useSortableGrid(
     const resetDragState = () => {
         setDragContext(null);
         setDropPreview(null);
-        setCardTransitions(new Map());
+        setCardTransitions({});
         setHighlightedGroupId(null);
     };
 
@@ -548,36 +549,28 @@ export function useSortableGrid(
     }, [dragContext]);
 
     const getCardTransition = useCallback((taskId: number) => {
-        return cardTransitions.get(taskId) ?? { x: 0, y: 0 };
+        return cardTransitions[taskId] ?? { x: 0, y: 0 };
     }, [cardTransitions]);
 
-    /**
-     * 특정 그룹이 드롭 타겟으로 하이라이트되어야 하는지 확인
-     */
     const isGroupHighlighted = useCallback((groupId: number): boolean => {
-        // dropPreview가 있으면 해당 그룹 하이라이트
         if (dropPreview?.groupId === groupId) return true;
-        // 자유 카드 드래그 시 하이라이트
         if (highlightedGroupId === groupId) return true;
         return false;
     }, [dropPreview, highlightedGroupId]);
 
     // ========== 반환 ==========
     return {
-        // 상태
         dragContext,
         dropPreview,
         cardPositions,
         isDragging: dragContext !== null,
         highlightedGroupId,
 
-        // 메서드
         startDrag,
         updateDrag,
         endDrag,
         cancelDrag,
 
-        // 유틸리티
         isTaskBeingDragged,
         getCardTransition,
         isGroupHighlighted,
