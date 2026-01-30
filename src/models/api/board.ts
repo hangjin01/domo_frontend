@@ -29,6 +29,29 @@ import {
 } from './mock-data';
 
 // ============================================
+// 좌표 정수화 유틸리티
+// ============================================
+
+/**
+ * 좌표를 정수로 반올림
+ * - 부동소수점 오차 방지
+ * - 저장/로드 반복 시 좌표 드리프트 방지
+ */
+function normalizeCoord(value: number): number {
+  return Math.round(value);
+}
+
+/**
+ * x, y 좌표를 정수화
+ */
+function normalizePosition(x: number, y: number): { x: number; y: number } {
+  return {
+    x: normalizeCoord(x),
+    y: normalizeCoord(y),
+  };
+}
+
+// ============================================
 // 백엔드 응답 타입 (내부용)
 // ============================================
 
@@ -302,9 +325,16 @@ export async function createColumn(
     return newColumn;
   }
 
+  // [좌표 정수화] 백엔드 전송 전 정수화
+  const payload = {
+    ...data,
+    localX: data.localX !== undefined ? normalizeCoord(data.localX) : undefined,
+    localY: data.localY !== undefined ? normalizeCoord(data.localY) : undefined,
+  };
+
   const response = await apiFetch<BackendColumnResponse>(`/projects/${projectId}/columns`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   return {
@@ -375,18 +405,25 @@ export async function createGroup(
 ): Promise<Group> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return addMockGroup({
+    // [좌표 정수화] Mock에서도 적용
+    const normalizedData = {
       ...data,
+      x: data.x !== undefined ? normalizeCoord(data.x) : undefined,
+      y: data.y !== undefined ? normalizeCoord(data.y) : undefined,
+    };
+    return addMockGroup({
+      ...normalizedData,
       projectId: projectId,
     });
   }
 
+  // [좌표 정수화] 백엔드 전송 전 정수화
   const response = await apiFetch<BackendColumnResponse>(`/projects/${projectId}/columns`, {
     method: 'POST',
     body: JSON.stringify({
       title: data.title || 'New Group',
-      localX: data.x ?? 0,
-      localY: data.y ?? 0,
+      localX: data.x !== undefined ? normalizeCoord(data.x) : 0,
+      localY: data.y !== undefined ? normalizeCoord(data.y) : 0,
       width: data.width ?? 300,
       height: data.height ?? 400,
       parentId: data.parentId ?? null,
@@ -402,6 +439,10 @@ export async function createGroup(
 
 /**
  * 그룹 업데이트 (위치, 크기, 부모 등)
+ *
+ * [좌표 정수화]
+ * - x, y 좌표는 전송 전 Math.round()로 정수화됩니다.
+ * - 부동소수점 오차로 인한 좌표 드리프트를 방지합니다.
  */
 export async function updateGroup(
     groupId: number,
@@ -409,7 +450,13 @@ export async function updateGroup(
 ): Promise<Group> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const updated = updateMockGroup(groupId, updates);
+    // [좌표 정수화] Mock에서도 적용
+    const normalizedUpdates = {
+      ...updates,
+      x: updates.x !== undefined ? normalizeCoord(updates.x) : undefined,
+      y: updates.y !== undefined ? normalizeCoord(updates.y) : undefined,
+    };
+    const updated = updateMockGroup(groupId, normalizedUpdates);
     if (!updated) {
       throw new Error('그룹을 찾을 수 없습니다.');
     }
@@ -420,8 +467,11 @@ export async function updateGroup(
   const payload: Record<string, unknown> = {};
 
   if (updates.title !== undefined) payload.title = updates.title;
-  if (updates.x !== undefined) payload.localX = updates.x;
-  if (updates.y !== undefined) payload.localY = updates.y;
+
+  // [좌표 정수화] x, y 좌표 정수화
+  if (updates.x !== undefined) payload.localX = normalizeCoord(updates.x);
+  if (updates.y !== undefined) payload.localY = normalizeCoord(updates.y);
+
   if (updates.width !== undefined) payload.width = updates.width;
   if (updates.height !== undefined) payload.height = updates.height;
 
@@ -460,6 +510,9 @@ export async function deleteGroup(groupId: number): Promise<void> {
 
 /**
  * 그룹 위치만 업데이트 (드래그용 - 최적화)
+ *
+ * [좌표 정수화]
+ * - 좌표는 내부적으로 updateGroup()에서 정수화됩니다.
  */
 export async function updateGroupPosition(
     groupId: number,
@@ -631,6 +684,9 @@ export async function getTask(taskId: number): Promise<Task> {
  * 태스크 생성
  * @param projectId - 프로젝트 ID (boardId)
  * @param task - 생성할 태스크 데이터 (column_id 포함)
+ *
+ * [좌표 정수화]
+ * - x, y 좌표는 전송 전 Math.round()로 정수화됩니다.
  */
 export async function createTask(
     projectId: number,
@@ -638,17 +694,23 @@ export async function createTask(
 ): Promise<Task> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    // Mock 헬퍼 함수 사용 - 새 태스크 추가
+    // [좌표 정수화] Mock에서도 적용
+    const normalizedPos = normalizePosition(task.x ?? 0, task.y ?? 0);
     const newTask: Task = {
       ...task,
       id: generateTaskId(),
       boardId: projectId,
       status: task.status || 'todo',
+      x: normalizedPos.x,
+      y: normalizedPos.y,
     } as Task;
 
     addMockTask(newTask);
     return newTask;
   }
+
+  // [좌표 정수화] 백엔드 전송 전 정수화
+  const normalizedPos = normalizePosition(task.x ?? 0, task.y ?? 0);
 
   // 백엔드: POST /api/projects/{project_id}/cards
   const response = await apiFetch<BackendCardResponse>(`/projects/${projectId}/cards`, {
@@ -658,8 +720,8 @@ export async function createTask(
       content: task.content || task.description,
       column_id: task.column_id || null,  // 컬럼 ID는 body에 포함
       order: 0,
-      x: task.x,
-      y: task.y,
+      x: normalizedPos.x,
+      y: normalizedPos.y,
       assignee_ids: task.assignees?.map(a => a.id) || [],
       start_date: task.start_date,
       due_date: task.due_date,
@@ -672,6 +734,9 @@ export async function createTask(
 
 /**
  * 태스크 수정
+ *
+ * [좌표 정수화]
+ * - x, y 좌표가 포함된 경우 전송 전 Math.round()로 정수화됩니다.
  */
 export async function updateTask(
     taskId: number,
@@ -679,8 +744,15 @@ export async function updateTask(
 ): Promise<Task> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    // Mock 헬퍼 함수 사용
-    const updatedTask = updateMockTask(taskId, updates);
+    // [좌표 정수화] Mock에서도 적용
+    const normalizedUpdates = { ...updates };
+    if (updates.x !== undefined) {
+      normalizedUpdates.x = normalizeCoord(updates.x);
+    }
+    if (updates.y !== undefined) {
+      normalizedUpdates.y = normalizeCoord(updates.y);
+    }
+    const updatedTask = updateMockTask(taskId, normalizedUpdates);
     if (!updatedTask) {
       throw new Error('태스크를 찾을 수 없습니다.');
     }
@@ -693,8 +765,10 @@ export async function updateTask(
   if (updates.title !== undefined) payload.title = updates.title;
   if (updates.content !== undefined) payload.content = updates.content;
   if (updates.description !== undefined) payload.content = updates.description;
-  if (updates.x !== undefined) payload.x = updates.x;
-  if (updates.y !== undefined) payload.y = updates.y;
+
+  // [좌표 정수화] x, y 좌표 정수화
+  if (updates.x !== undefined) payload.x = normalizeCoord(updates.x);
+  if (updates.y !== undefined) payload.y = normalizeCoord(updates.y);
 
   // column_id는 null을 명시적으로 전송해야 함 (그룹에서 분리할 때)
   // updates 객체에 column_id 키가 있으면 (undefined가 아닌 값으로 설정되었으면) 전송
@@ -982,7 +1056,7 @@ export async function getBoardMembers(projectId: number): Promise<Member[]> {
     const members = await getWorkspaceMembers(project.workspace_id);
     return members;
   } catch (error) {
-    
+
     return MOCK_MEMBERS;
   }
 }
@@ -1082,12 +1156,16 @@ interface BatchUpdateResponse {
 /**
  * 여러 카드의 위치를 일괄 업데이트
  * 단일 트랜잭션으로 처리되어 Race Condition 방지
- * 
+ *
+ * [좌표 정수화]
+ * - 모든 좌표는 전송 전 Math.round()로 정수화됩니다.
+ * - 부동소수점 오차로 인한 좌표 드리프트를 방지합니다.
+ *
  * @param updates - 업데이트할 카드 목록 (id, x, y, column_id)
  * @returns 업데이트된 카드 목록
  */
 export async function batchUpdateCardPositions(
-  updates: BatchCardPositionUpdate[]
+    updates: BatchCardPositionUpdate[]
 ): Promise<Task[]> {
   if (updates.length === 0) {
     return [];
@@ -1098,9 +1176,11 @@ export async function batchUpdateCardPositions(
     // Mock: 각 카드를 개별 업데이트
     const results: Task[] = [];
     for (const update of updates) {
+      // [좌표 정수화] Mock에서도 적용
+      const normalizedPos = normalizePosition(update.x, update.y);
       const task = updateMockTask(update.id, {
-        x: update.x,
-        y: update.y,
+        x: normalizedPos.x,
+        y: normalizedPos.y,
         column_id: update.column_id ?? undefined,
       });
       if (task) {
@@ -1110,15 +1190,17 @@ export async function batchUpdateCardPositions(
     return results;
   }
 
-  // 백엔드 Batch API 호출
-  // PATCH /cards/batch
+  // [좌표 정수화] 백엔드 전송 전 정수화
   const payload = {
-    cards: updates.map(u => ({
-      id: u.id,
-      x: u.x,
-      y: u.y,
-      column_id: u.column_id,
-    })),
+    cards: updates.map(u => {
+      const normalizedPos = normalizePosition(u.x, u.y);
+      return {
+        id: u.id,
+        x: normalizedPos.x,
+        y: normalizedPos.y,
+        column_id: u.column_id,
+      };
+    }),
   };
 
   const response = await apiFetch<BatchUpdateResponse[]>('/cards/batch', {
