@@ -1294,10 +1294,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             const boxEndX = Math.max(selectionBox.startX, x);
             const boxEndY = Math.max(selectionBox.startY, y);
             const newSelectedIds = new Set<number>();
-            tasks.forEach(t => {
-                const tx = t.x || 0, ty = t.y || 0;
-                if (tx < boxEndX && tx + 280 > boxStartX && ty < boxEndY && ty + 100 > boxStartY) {
-                    newSelectedIds.add(t.id);
+
+            // [FIX] cardPositions 사용하여 그룹 내 카드도 절대 좌표로 비교
+            cardPositions.forEach(pos => {
+                if (pos.taskId === -1 || pos.isPlaceholder) return; // 플레이스홀더 제외
+                const tx = pos.x;
+                const ty = pos.y;
+                if (tx < boxEndX && tx + gridConfig.cardWidth > boxStartX &&
+                    ty < boxEndY && ty + gridConfig.cardHeight > boxStartY) {
+                    newSelectedIds.add(pos.taskId);
                 }
             });
             setSelectedTaskIds(newSelectedIds);
