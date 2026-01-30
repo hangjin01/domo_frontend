@@ -9,6 +9,10 @@
  * - 카드 추가/제거 시 레이아웃 재계산
  * - 그룹 리사이징 시 카드 재배치
  *
+ * 좌표 시스템: 상대 좌표 (Relative Coordinate System)
+ * - 그룹에 속한 카드는 그룹 좌상단 기준의 상대 좌표(offset)를 저장
+ * - 렌더링 시 group.x + card.x, group.y + card.y로 절대 좌표 계산
+ *
  * 사용처:
  * - BoardCanvas.tsx (그룹 생성, 카드 드롭)
  * - useSortableGrid.ts (드래그 앤 드롭)
@@ -18,6 +22,7 @@
 import {
     GridConfig,
     DEFAULT_GRID_CONFIG,
+    indexToRelativePosition,
     indexToAbsolutePosition,
 } from '@/src/models/constants/grid';
 
@@ -25,10 +30,21 @@ import {
 // 타입 정의
 // ============================================
 
-/** 카드 위치 정보 */
-export interface CardPosition {
+/** 카드 위치 정보 (상대 좌표) */
+export interface CardRelativePosition {
     taskId: number;
+    /** 그룹 내 상대 X 좌표 */
     x: number;
+    /** 그룹 내 상대 Y 좌표 */
+    y: number;
+}
+
+/** 카드 위치 정보 (절대 좌표 - 렌더링용) */
+export interface CardAbsolutePosition {
+    taskId: number;
+    /** 캔버스 절대 X 좌표 */
+    x: number;
+    /** 캔버스 절대 Y 좌표 */
     y: number;
 }
 
@@ -38,12 +54,12 @@ export interface GroupDimensions {
     height: number;
 }
 
-/** 그룹 레이아웃 계산 결과 */
+/** 그룹 레이아웃 계산 결과 (상대 좌표) */
 export interface GroupLayoutResult {
     /** 그룹 크기 */
     dimensions: GroupDimensions;
-    /** 카드들의 새 위치 */
-    cardPositions: CardPosition[];
+    /** 카드들의 새 상대 좌표 */
+    cardPositions: CardRelativePosition[];
 }
 
 /** 그룹 생성 결과 (위치 포함) */
@@ -55,8 +71,8 @@ export interface GroupCreationResult {
         width: number;
         height: number;
     };
-    /** 카드들의 새 위치 */
-    cardPositions: CardPosition[];
+    /** 카드들의 새 상대 좌표 */
+    cardPositions: CardRelativePosition[];
 }
 
 // ============================================
@@ -91,20 +107,48 @@ export function calculateGroupDimensions(
 }
 
 /**
- * 그룹 내 카드들의 그리드 좌표 계산
+ * 그룹 내 카드들의 상대 좌표 계산
+ *
+ * @description
+ * 카드들의 그룹 내 상대 좌표를 계산합니다.
+ * 반환값은 그룹 좌상단(0,0) 기준의 offset입니다.
+ *
+ * @param taskIds - 카드 ID 배열 (순서대로 배치)
+ * @param config - 그리드 설정
+ * @returns 각 카드의 상대 좌표
+ */
+export function calculateCardRelativePositions(
+    taskIds: number[],
+    config: GridConfig = DEFAULT_GRID_CONFIG
+): CardRelativePosition[] {
+    return taskIds.map((taskId, index) => {
+        const pos = indexToRelativePosition(index, config);
+        return {
+            taskId,
+            x: pos.x,
+            y: pos.y,
+        };
+    });
+}
+
+/**
+ * 그룹 내 카드들의 절대 좌표 계산 (렌더링용)
+ *
+ * @description
+ * 렌더링 시점에서 사용합니다. 그룹 좌표 + 상대 좌표 = 절대 좌표
  *
  * @param taskIds - 카드 ID 배열 (순서대로 배치)
  * @param groupX - 그룹 X 좌표
  * @param groupY - 그룹 Y 좌표
  * @param config - 그리드 설정
- * @returns 각 카드의 새 좌표
+ * @returns 각 카드의 절대 좌표
  */
-export function calculateCardPositions(
+export function calculateCardAbsolutePositions(
     taskIds: number[],
     groupX: number,
     groupY: number,
     config: GridConfig = DEFAULT_GRID_CONFIG
-): CardPosition[] {
+): CardAbsolutePosition[] {
     return taskIds.map((taskId, index) => {
         const pos = indexToAbsolutePosition(index, groupX, groupY, config);
         return {
@@ -116,27 +160,23 @@ export function calculateCardPositions(
 }
 
 /**
- * 그룹 레이아웃 전체 계산 (크기 + 카드 위치)
+ * 그룹 레이아웃 전체 계산 (크기 + 상대 좌표)
  *
  * @description
- * 그룹의 크기와 내부 카드들의 위치를 한 번에 계산합니다.
+ * 그룹의 크기와 내부 카드들의 상대 좌표를 한 번에 계산합니다.
  * 그룹 생성, 카드 추가/제거, 리사이징 시 사용합니다.
  *
  * @param taskIds - 카드 ID 배열
- * @param groupX - 그룹 X 좌표
- * @param groupY - 그룹 Y 좌표
  * @param config - 그리드 설정
- * @returns 그룹 크기 및 카드 위치
+ * @returns 그룹 크기 및 카드 상대 좌표
  */
 export function calculateGroupLayout(
     taskIds: number[],
-    groupX: number,
-    groupY: number,
     config: GridConfig = DEFAULT_GRID_CONFIG
 ): GroupLayoutResult {
     return {
         dimensions: calculateGroupDimensions(taskIds.length, config),
-        cardPositions: calculateCardPositions(taskIds, groupX, groupY, config),
+        cardPositions: calculateCardRelativePositions(taskIds, config),
     };
 }
 
@@ -151,9 +191,11 @@ export function calculateGroupLayout(
  * 선택된 카드들의 중심점을 기준으로 그룹 위치를 결정하고,
  * 카드들을 그리드 레이아웃에 맞게 재배치합니다.
  *
- * @param selectedCards - 선택된 카드들 (id, x, y 필요)
+ * 반환되는 카드 좌표는 상대 좌표(그룹 내 offset)입니다.
+ *
+ * @param selectedCards - 선택된 카드들 (id, x, y 필요 - 기존 절대 좌표)
  * @param config - 그리드 설정
- * @returns 그룹 정보 및 카드 새 위치
+ * @returns 그룹 정보 및 카드 상대 좌표
  */
 export function calculateGroupCreation(
     selectedCards: Array<{ id: number; x?: number; y?: number }>,
@@ -187,9 +229,9 @@ export function calculateGroupCreation(
     const groupX = Math.round(centerX - dimensions.width / 2);
     const groupY = Math.round(centerY - dimensions.height / 2);
 
-    // 4. 카드들의 새 위치 계산
+    // 4. 카드들의 상대 좌표 계산 (그룹 내 offset)
     const taskIds = selectedCards.map(card => card.id);
-    const cardPositions = calculateCardPositions(taskIds, groupX, groupY, config);
+    const cardPositions = calculateCardRelativePositions(taskIds, config);
 
     return {
         group: {
@@ -212,24 +254,20 @@ export function calculateGroupCreation(
  * @param existingTaskIds - 기존 카드 ID 배열
  * @param newTaskId - 추가할 카드 ID
  * @param insertIndex - 삽입 위치 (기본: 마지막)
- * @param groupX - 그룹 X 좌표
- * @param groupY - 그룹 Y 좌표
  * @param config - 그리드 설정
- * @returns 그룹 새 크기 및 모든 카드 위치
+ * @returns 그룹 새 크기 및 모든 카드 상대 좌표
  */
 export function calculateLayoutAfterAddCard(
     existingTaskIds: number[],
     newTaskId: number,
     insertIndex: number = existingTaskIds.length,
-    groupX: number,
-    groupY: number,
     config: GridConfig = DEFAULT_GRID_CONFIG
 ): GroupLayoutResult {
     // 새 카드를 지정된 위치에 삽입
     const newTaskIds = [...existingTaskIds];
     newTaskIds.splice(insertIndex, 0, newTaskId);
 
-    return calculateGroupLayout(newTaskIds, groupX, groupY, config);
+    return calculateGroupLayout(newTaskIds, config);
 }
 
 /**
@@ -237,20 +275,16 @@ export function calculateLayoutAfterAddCard(
  *
  * @param existingTaskIds - 기존 카드 ID 배열
  * @param removeTaskId - 제거할 카드 ID
- * @param groupX - 그룹 X 좌표
- * @param groupY - 그룹 Y 좌표
  * @param config - 그리드 설정
- * @returns 그룹 새 크기 및 남은 카드 위치
+ * @returns 그룹 새 크기 및 남은 카드 상대 좌표
  */
 export function calculateLayoutAfterRemoveCard(
     existingTaskIds: number[],
     removeTaskId: number,
-    groupX: number,
-    groupY: number,
     config: GridConfig = DEFAULT_GRID_CONFIG
 ): GroupLayoutResult {
     const newTaskIds = existingTaskIds.filter(id => id !== removeTaskId);
-    return calculateGroupLayout(newTaskIds, groupX, groupY, config);
+    return calculateGroupLayout(newTaskIds, config);
 }
 
 // ============================================
@@ -295,32 +329,28 @@ export function shouldResizeGroup(
 // ============================================
 
 /**
- * 카드가 그룹 내 몇 번째 인덱스에 위치하는지 계산
+ * 카드가 그룹 내 몇 번째 인덱스에 위치하는지 계산 (상대 좌표 기준)
  *
- * @param cardX - 카드 X 좌표
- * @param cardY - 카드 Y 좌표
- * @param groupX - 그룹 X 좌표
- * @param groupY - 그룹 Y 좌표
+ * @param relativeX - 카드 상대 X 좌표
+ * @param relativeY - 카드 상대 Y 좌표
  * @param totalCards - 그룹 내 총 카드 수
  * @param config - 그리드 설정
  * @returns 인덱스 (0부터 시작)
  */
 export function calculateCardIndex(
-    cardX: number,
-    cardY: number,
-    groupX: number,
-    groupY: number,
+    relativeX: number,
+    relativeY: number,
     totalCards: number,
     config: GridConfig = DEFAULT_GRID_CONFIG
 ): number {
-    const relX = cardX - groupX - config.padding;
-    const relY = cardY - groupY - config.headerHeight - config.padding;
+    const adjustedX = relativeX - config.padding;
+    const adjustedY = relativeY - config.headerHeight - config.padding;
 
     const col = Math.max(0, Math.min(
         config.columns - 1,
-        Math.round(relX / (config.cardWidth + config.gap))
+        Math.round(adjustedX / (config.cardWidth + config.gap))
     ));
-    const row = Math.max(0, Math.round(relY / (config.cardHeight + config.gap)));
+    const row = Math.max(0, Math.round(adjustedY / (config.cardHeight + config.gap)));
 
     const index = row * config.columns + col;
     return Math.max(0, Math.min(totalCards, index));
@@ -340,7 +370,8 @@ export function getMinimumGroupDimensions(
 
 export default {
     calculateGroupDimensions,
-    calculateCardPositions,
+    calculateCardRelativePositions,
+    calculateCardAbsolutePositions,
     calculateGroupLayout,
     calculateGroupCreation,
     calculateLayoutAfterAddCard,
