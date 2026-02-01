@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Task, Comment, Tag as TagType } from '@/src/models/types';
+import { Task, Comment, Tag as TagType, FileMetadata, TaskFile } from '@/src/models/types';
 import { STICKY_COLORS, getStickyStyle } from '@/src/models/utils/canvas';
-import { createCardComment, getCardComments, deleteCardComment, detachFileFromCard } from '@/src/models/api';
+import { createCardComment, getCardComments, deleteCardComment, detachFileFromCard, uploadFile, attachFileToCard, getProjectFiles } from '@/src/models/api';
 import { FileVersionDropdown } from '@/src/views/common';
 import {
     CreditCard, Palette, X, Briefcase, FileText, StickyNote, AlignLeft,
-    Paperclip, List, Bookmark, Tag, Clock, Plus, CheckSquare, ChevronRight, Loader2, Trash2, Unlink
+    Paperclip, List, Bookmark, Tag, Clock, Plus, CheckSquare, ChevronRight, Loader2, Trash2, Unlink, Upload
 } from 'lucide-react';
 
 interface TaskDetailModalProps {
@@ -16,6 +16,7 @@ interface TaskDetailModalProps {
     onUpdate: (task: Task) => void;
     currentUser: string;
     currentUserId?: number; // 댓글 삭제 권한 체크용
+    projectId?: number;
 }
 
 // task.time 파싱 헬퍼 함수 (컴포넌트 외부에 정의)
@@ -31,7 +32,7 @@ function parseTaskTime(time: string | undefined): { start: string; end: string }
     return { start: '', end: '' };
 }
 
-export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose, onUpdate, currentUser, currentUserId }) => {
+export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose, onUpdate, currentUser, currentUserId, projectId }) => {
     // 초기값을 useMemo로 계산 (useEffect 내 setState 제거)
     const initialDates = useMemo(() => parseTaskTime(task.time), [task.time]);
 
@@ -55,6 +56,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
     // 파일 연결 해제 상태
     const [detachingFileId, setDetachingFileId] = useState<number | null>(null);
+
+    // 파일 첨부 관련 상태
+    const [isAttachingFile, setIsAttachingFile] = useState(false);
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
+    const [projectFiles, setProjectFiles] = useState<FileMetadata[]>([]);
+    const [isLoadingProjectFiles, setIsLoadingProjectFiles] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Ref로 콜백 안정화 (무한 루프 방지)
     const onUpdateRef = useRef(onUpdate);
@@ -90,7 +98,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             try {
                 const loadedComments = await getCardComments(task.id);
                 if (cancelled) return; // 컴포넌트 언마운트 시 상태 업데이트 방지
-                
+
                 setComments(loadedComments);
                 // ref를 통해 최신 콜백 호출 (의존성 배열에 추가하지 않음)
                 onUpdateRef.current({ ...taskRef.current, comments: loadedComments });
@@ -106,7 +114,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         };
 
         loadComments();
-        
+
         return () => {
             cancelled = true;
         };
@@ -225,6 +233,77 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             alert('파일 연결 해제에 실패했습니다.');
         } finally {
             setDetachingFileId(null);
+        }
+    };
+
+    // 프로젝트 파일 목록 로드 (첨부 패널 열 때)
+    const loadProjectFiles = useCallback(async () => {
+        if (!projectId) return;
+        setIsLoadingProjectFiles(true);
+        try {
+            const files = await getProjectFiles(projectId);
+            // 이미 카드에 첨부된 파일 제외
+            const attachedIds = new Set((task.files || []).map(f => f.id));
+            setProjectFiles(files.filter(f => !attachedIds.has(f.id)));
+        } catch (err) {
+            console.error('Failed to load project files:', err);
+        } finally {
+            setIsLoadingProjectFiles(false);
+        }
+    }, [projectId, task.files]);
+
+    // 첨부 패널 토글
+    const toggleAttachPanel = useCallback(() => {
+        const next = !isAttachingFile;
+        setIsAttachingFile(next);
+        if (next) loadProjectFiles();
+    }, [isAttachingFile, loadProjectFiles]);
+
+    // 기존 프로젝트 파일을 카드에 첨부
+    const handleAttachExistingFile = async (file: FileMetadata) => {
+        if (!file.id) return;
+        try {
+            await attachFileToCard(task.id, file.id);
+            const newTaskFile: TaskFile = {
+                id: file.id,
+                name: file.filename,
+                url: file.latest_version ? `/api/files/download/${file.latest_version.id}` : '#',
+                size: file.latest_version?.file_size || 0,
+                type: 'application/octet-stream',
+            };
+            onUpdate({ ...task, files: [...(task.files || []), newTaskFile] });
+            setProjectFiles(prev => prev.filter(f => f.id !== file.id));
+        } catch (err) {
+            console.error('Failed to attach file:', err);
+            alert('파일 첨부에 실패했습니다.');
+        }
+    };
+
+    // 새 파일 업로드 후 카드에 첨부
+    const handleUploadAndAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = e.target.files;
+        if (!selectedFiles || selectedFiles.length === 0 || !projectId) return;
+
+        setIsUploadingFile(true);
+        try {
+            for (const file of Array.from(selectedFiles) as File[]) {
+                const uploaded = await uploadFile(projectId, file);
+                await attachFileToCard(task.id, uploaded.id);
+                const newTaskFile: TaskFile = {
+                    id: uploaded.id,
+                    name: uploaded.filename,
+                    url: uploaded.latest_version ? `/api/files/download/${uploaded.latest_version.id}` : '#',
+                    size: uploaded.latest_version?.file_size || 0,
+                    type: 'application/octet-stream',
+                };
+                onUpdate({ ...task, files: [...(task.files || []), newTaskFile] });
+            }
+        } catch (err) {
+            console.error('Failed to upload and attach file:', err);
+            alert('파일 업로드에 실패했습니다.');
+        } finally {
+            setIsUploadingFile(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
@@ -418,12 +497,19 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                 </div>
                             </div>
 
-                            {/* Attachments Section for Folders */}
-                            {task.files && task.files.length > 0 && (
+                            {/* Attachments Section */}
+                            {((task.files && task.files.length > 0) || projectId) && (
                                 <div>
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <Paperclip size={20} className="text-gray-500 dark:text-gray-400" />
-                                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-lg">첨부 파일 ({task.files.length})</h3>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <Paperclip size={20} className="text-gray-500 dark:text-gray-400" />
+                                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-lg">첨부 파일 ({(task.files || []).length})</h3>
+                                        </div>
+                                        {projectId && (
+                                            <button onClick={toggleAttachPanel} className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors font-medium">
+                                                <Plus size={14} /><span>추가</span>
+                                            </button>
+                                        )}
                                     </div>
                                     <div className="ml-8 grid gap-2">
                                         {task.files.map((file, idx) => (
@@ -595,6 +681,31 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                 )}
                                 <button onClick={addMember} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Plus size={14} /><span>멤버</span></button>
                                 <button onClick={addChecklist} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><CheckSquare size={14} /><span>체크리스트</span></button>
+                                {projectId && (
+                                    <>
+                                        <button onClick={toggleAttachPanel} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Paperclip size={14} /><span>파일 첨부</span></button>
+                                        {isAttachingFile && (
+                                            <div className="bg-gray-100 dark:bg-[#22272b] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2 animate-in slide-in-from-top-2">
+                                                <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleUploadAndAttach} />
+                                                <button onClick={() => fileInputRef.current?.click()} disabled={isUploadingFile} className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white rounded-lg text-xs font-medium transition-colors">
+                                                    {isUploadingFile ? <><Loader2 size={12} className="animate-spin" /><span>업로드 중...</span></> : <><Upload size={12} /><span>새 파일 업로드</span></>}
+                                                </button>
+                                                {isLoadingProjectFiles ? (
+                                                    <div className="flex justify-center py-2"><Loader2 size={14} className="animate-spin text-gray-400" /></div>
+                                                ) : projectFiles.length > 0 ? (
+                                                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                                                        <div className="text-xs text-gray-500 mb-1">프로젝트 파일</div>
+                                                        {projectFiles.map(f => (
+                                                            <button key={f.id} onClick={() => handleAttachExistingFile(f)} className="w-full text-left px-2 py-1.5 hover:bg-gray-200 dark:hover:bg-[#2c333a] rounded text-xs truncate text-gray-700 dark:text-gray-300">{f.filename}</button>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-xs text-gray-400 text-center py-1">첨부 가능한 파일 없음</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <span className="text-xs font-semibold text-gray-500 uppercase">작업</span>

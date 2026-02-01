@@ -760,6 +760,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                     task={selectedTask} onClose={() => setSelectedTask(null)}
                     onUpdate={handleTaskModalUpdate}
                     currentUser={user?.name ?? "User"} currentUserId={user?.id ?? 0}
+                    projectId={project.id}
                 />
             )}
         </div>
