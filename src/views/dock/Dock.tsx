@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DockButton } from '@/src/views/dock/DockButton';
 import { VoiceChatModal } from '@/src/views/voice';
+import { ChatModal } from '@/src/views/chat';
 import type { Member, EditingCard } from '@/src/models/types';
 import { useVoiceChat } from '@/src/containers/hooks/common/useVoiceChat';
 
@@ -15,6 +16,10 @@ interface DockProps {
     setShowMembers: (show: boolean) => void;
     projectId: number;
     currentUserId: number;
+    currentUserName: string;
+    onExpandChatToFullView: () => void;
+    isChatViewActive: boolean;
+    projectName: string;
 }
 
 export function Dock({
@@ -26,11 +31,23 @@ export function Dock({
     setShowMembers,
     projectId,
     currentUserId,
+    currentUserName,
+    onExpandChatToFullView,
+    isChatViewActive,
+    projectName,
 }: DockProps) {
     const onlineCount = members.filter(m => m.isOnline).length;
 
     // 음성 채팅 모달 표시 여부
     const [showVoiceModal, setShowVoiceModal] = useState(false);
+
+    // 채팅 모달 표시 여부
+    const [showChatModal, setShowChatModal] = useState(false);
+
+    // 사이드바에서 채팅 뷰 활성화 시 모달 자동 닫기
+    useEffect(() => {
+        if (isChatViewActive) setShowChatModal(false);
+    }, [isChatViewActive]);
 
     // 음성 채팅 멤버 리스트 표시 여부 상태 (hover용)
     const [showVoiceList, setShowVoiceList] = useState(false);
@@ -104,6 +121,16 @@ export function Dock({
                             label="마이페이지"
                             isActive={activeMenu === 'mypage'}
                             onClick={() => onMenuChange('mypage')}
+                        />
+                        <DockButton
+                            icon={
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                            }
+                            label="채팅"
+                            isActive={showChatModal}
+                            onClick={() => setShowChatModal(!showChatModal)}
                         />
                     </div>
 
@@ -345,6 +372,20 @@ export function Dock({
                 onToggleMute={toggleMute}
                 onToggleDeafen={toggleDeafen}
                 onClearError={clearError}
+            />
+
+            {/* 채팅 모달 */}
+            <ChatModal
+                isOpen={showChatModal}
+                onClose={() => setShowChatModal(false)}
+                onExpandToFullView={() => {
+                    setShowChatModal(false);
+                    onExpandChatToFullView();
+                }}
+                projectId={projectId}
+                currentUserId={currentUserId}
+                currentUserName={currentUserName}
+                projectName={projectName}
             />
         </>
     );
