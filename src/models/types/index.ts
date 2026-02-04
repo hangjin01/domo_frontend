@@ -70,7 +70,7 @@ export interface Workspace {
 // 3. 보드 / 태스크 / 노드 (프론트엔드용)
 // ============================================
 
-export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings' | 'community';
+export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings' | 'community' | 'chat';
 
 export type TaskStatus = 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done';
 
