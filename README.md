@@ -35,8 +35,8 @@
 
 | Metric | Value |
 |--------|-------|
-| TypeScript 파일 | 81개 |
-| 총 코드 라인 | 17,852줄 |
+| TypeScript 파일 | 90개 |
+| 총 코드 라인 | 20,080줄 |
 | containers/ | 18개 |
 | views/ | 37개 |
 | models/ | 21개 |
@@ -117,16 +117,31 @@ models/                 Data Layer
 ```
 src/
 |-- app/
-|   |-- page.tsx                메인 라우트
-|   |-- layout.tsx              루트 레이아웃
+|   |-- page.tsx                루트 리다이렉트 (인증 → /workspaces, 비인증 → /login)
+|   |-- layout.tsx              루트 레이아웃 (UserProvider)
 |   |-- globals.css             전역 스타일
+|   |-- (auth)/                 인증 라우트 그룹 (로그인 유저 → /workspaces 리다이렉트)
+|   |   |-- layout.tsx          로그인 가드 레이아웃 (27 lines)
+|   |   |-- login/page.tsx      로그인 (20 lines)
+|   |   |-- signup/page.tsx     회원가입 (17 lines)
+|   |   |-- verify/page.tsx     이메일 인증 (37 lines)
+|   |   |-- verify-success/page.tsx  인증 완료 (14 lines)
+|   |-- (app)/                  앱 라우트 그룹 (비로그인 → /login 리다이렉트)
+|   |   |-- layout.tsx          인증 가드 레이아웃 (27 lines)
+|   |   |-- workspaces/
+|   |       |-- page.tsx                  워크스페이스 목록 (32 lines)
+|   |       |-- [workspaceId]/
+|   |           |-- page.tsx              워크스페이스 상세 (82 lines)
+|   |           |-- projects/
+|   |               |-- [projectId]/
+|   |                   |-- page.tsx      프로젝트 보드 (68 lines)
 |   |-- invite/
 |       |-- [token]/
-|           |-- page.tsx        워크스페이스 초대 수락
+|           |-- page.tsx        워크스페이스 초대 수락 (public)
 |
 |-- lib/
 |   |-- contexts/
-|   |   |-- UserContext.tsx         유저 상태 Context (51 lines)
+|   |   |-- UserContext.tsx         유저 상태 Context (58 lines)
 |   |-- api/
 |       |-- mock-data.ts           Mock 데이터 (309 lines)
 |
@@ -195,7 +210,7 @@ src/
     |-- api/
     |   |-- config.ts               API 설정 + WebSocket URL 변환 (139 lines)
     |   |-- board.ts                보드 API + 좌표 정수화 (1108 lines)
-    |   |-- workspace.ts            워크스페이스 API (526 lines)
+    |   |-- workspace.ts            워크스페이스 API (600 lines)
     |   |-- chat.ts                 채팅 API (33 lines)
     |   |-- auth.ts                 인증 API
     |   |-- user.ts                 사용자 API
@@ -218,15 +233,21 @@ src/
 ### 3.3 Data Flow
 
 ```
-app/page.tsx
+/ (Root)
+    |-- 인증 확인 → /workspaces 또는 /login 리다이렉트
     |
-    |-- [인증 전] LoginScreen / SignupScreen / VerifyEmailScreen / VerifySuccessScreen
+(auth) 라우트 그룹 [로그인 가드: 인증 유저 → /workspaces]
+    |-- /login          → LoginScreen
+    |-- /signup         → SignupScreen
+    |-- /verify         → VerifyEmailScreen
+    |-- /verify-success → VerifySuccessScreen
     |
-    |-- [인증 후] WorkspaceListScreen --> getWorkspaces()
+(app) 라우트 그룹 [인증 가드: 비인증 유저 → /login]
+    |-- /workspaces     → WorkspaceListScreen --> getWorkspaces()
     |
-    |-- [워크스페이스 선택] ProjectSelectScreen --> getProjects()
+    |-- /workspaces/{id} → ProjectSelectScreen --> getWorkspace()
     |
-    |-- [프로젝트 선택] BoardScreen
+    |-- /workspaces/{id}/projects/{pid} → BoardScreen
             |
             |-- loadProjectData()
             |       getTasks(), getConnections(), getColumns()
@@ -243,7 +264,7 @@ app/page.tsx
                             |-- useVoiceChat (WebRTC 음성채팅)
                             |-- useAudioAnalyser (오디오 시각화)
 
-app/invite/[token]/page.tsx
+/invite/[token] (public)
     |-- InviteAcceptScreen --> getInvitationInfo(), acceptInvitation()
 ```
 
@@ -515,7 +536,7 @@ import { TaskCard } from '@/src/views/task';
 
 ## 7. Quality Status
 
-### 7.1 Current Status (2026-02-04)
+### 7.1 Current Status (2026-02-06)
 
 | Check | Status |
 |-------|--------|
@@ -598,7 +619,7 @@ containers/ --> models/ 18개 (API 호출)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | /workspaces | 워크스페이스 목록 |
-| GET | /workspaces/{id} | 워크스페이스 상세 |
+| ~~GET~~ | ~~/workspaces/{id}~~ | ~~워크스페이스 상세~~ (미지원 405, 목록에서 필터링) |
 | POST | /workspaces | 워크스페이스 생성 |
 | PATCH | /workspaces/{id} | 워크스페이스 수정 |
 | DELETE | /workspaces/{id} | 워크스페이스 삭제 |
@@ -731,4 +752,4 @@ WebSocket 연결 실패 시:
 
 ---
 
-Last Updated: 2026-02-04
+Last Updated: 2026-02-06
