@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
     getProjects,
     createProject,
@@ -12,6 +12,7 @@ import {
 } from '@/src/models/api';
 import type { Project, Workspace, User, Member } from '@/src/models/types';
 import { useUser } from '@/src/lib/contexts/UserContext';
+import { useWorkspaceSocket } from '@/src/containers/hooks/workspace';
 import type { ActivityLog } from '@/src/models/api/activity';
 import {
     ArrowLeft,
@@ -436,19 +437,38 @@ export function ProjectSelectScreen({ workspace, user: propUser, onSelectProject
     }, [isProfileMenuOpen]);
 
     // 프로젝트 목록 로딩
-    useEffect(() => {
-        const fetchProjects = async () => {
-            try {
-                const data = await getProjects(workspace.id);
-                setProjects(data);
-            } catch (error) {
-                console.error('Failed to fetch projects:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchProjects();
+    const fetchProjects = useCallback(async () => {
+        try {
+            const data = await getProjects(workspace.id);
+            setProjects(data);
+        } catch (error) {
+            console.error('Failed to fetch projects:', error);
+        } finally {
+            setLoading(false);
+        }
     }, [workspace.id]);
+
+    useEffect(() => {
+        fetchProjects();
+    }, [fetchProjects]);
+
+    // 실시간 WebSocket: 워크스페이스 변경 시 프로젝트 목록 자동 갱신
+    const wsRefetchTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const handleWsMessage = useCallback(() => {
+        if (wsRefetchTimerRef.current) clearTimeout(wsRefetchTimerRef.current);
+        wsRefetchTimerRef.current = setTimeout(() => fetchProjects(), 500);
+    }, [fetchProjects]);
+
+    useEffect(() => {
+        return () => { if (wsRefetchTimerRef.current) clearTimeout(wsRefetchTimerRef.current); };
+    }, []);
+
+    useWorkspaceSocket({
+        workspaceId: workspace.id,
+        currentUserId: user.id,
+        enabled: !loading,
+        onMessage: handleWsMessage,
+    });
 
 
     // 마이페이지 데이터 로딩 (활동 로그)
@@ -693,7 +713,7 @@ export function ProjectSelectScreen({ workspace, user: propUser, onSelectProject
                                             key={project.id}
                                             onClick={() => onSelectProject(project)}
                                             onContextMenu={(e) => handleContextMenu(e, project)}
-                                            className="glass-card rounded-[2rem] p-6 cursor-pointer group relative overflow-hidden min-h-[220px] flex flex-col hover:-translate-y-1 transition-transform duration-300"
+                                            className="glass-card rounded-[2rem] p-6 cursor-pointer group relative overflow-hidden min-h-[220px] flex flex-col transition-colors duration-200"
                                         >
                                             <div className="absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-500 opacity-0 group-hover:opacity-20 blur-3xl transition-opacity duration-500 rounded-full" />
 

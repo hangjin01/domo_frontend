@@ -149,10 +149,10 @@ export async function getProjectPost(postId: number): Promise<Post> {
 }
 
 /**
- * 커뮤니티 게시글 수정
+ * 커뮤니티 게시글 수정 (이미지 변경 지원)
  * PATCH /community/{post_id}
  */
-export async function updateCommunityPost(postId: number, data: PostUpdateRequest): Promise<Post> {
+export async function updateCommunityPost(postId: number, data: PostUpdateRequest & { file?: File; removeImage?: boolean }): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(500);
         const post = MOCK_POSTS.find(p => p.id === postId);
@@ -162,10 +162,13 @@ export async function updateCommunityPost(postId: number, data: PostUpdateReques
         return updatedPost;
     }
 
-    return apiFetch<Post>(`/community/${postId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-    });
+    const formData = new FormData();
+    if (data.title !== undefined) formData.append('title', data.title);
+    if (data.content !== undefined) formData.append('content', data.content);
+    if (data.file) formData.append('file', data.file);
+    if (data.removeImage) formData.append('remove_image', 'true');
+
+    return apiUpload<Post>(`/community/${postId}`, formData, { method: 'PATCH' });
 }
 
 /**

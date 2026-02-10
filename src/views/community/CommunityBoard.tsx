@@ -1,31 +1,33 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PostList } from './PostList';
 import { PostDetail } from './PostDetail';
 import { PostWriter } from './PostWriter';
 import { getProjectPosts, getCommunityPosts } from '@/src/models/api';
+import { useCommunitySocket } from '@/src/containers/hooks/community';
 import type { Post } from '@/src/models/types';
 import { Loader2, Plus, Search } from 'lucide-react';
 
 interface CommunityBoardProps {
-    projectId?: number; // 커뮤니티용 프로젝트 ID (기본값: 1)
+    projectId?: number;
     viewType?: 'grid' | 'table';
+    /** 외부 WebSocket 이벤트 수신 시 갱신 트리거 (프로젝트 커뮤니티용) */
+    refreshKey?: number;
 }
 
 type ViewMode = 'list' | 'detail' | 'write';
 
-export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, viewType = 'table' }) => {
+export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, viewType = 'table', refreshKey = 0 }) => {
     const [posts, setPosts] = useState<Post[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-
     const [sortBy, setSortBy] = useState<'latest' | 'comments'>('latest');
 
-    const fetchPosts = async () => {
-        setIsLoading(true);
+    const fetchPosts = useCallback(async (silent = false) => {
+        if (!silent) setIsLoading(true);
         try {
             let data;
             if (viewType === 'grid') {
@@ -37,13 +39,31 @@ export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, v
         } catch (error) {
             console.error('Failed to fetch posts:', error);
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
         }
-    };
+    }, [projectId, viewType]);
 
+    // 초기 로딩
     useEffect(() => {
         fetchPosts();
-    }, [projectId, viewType]);
+    }, [fetchPosts]);
+
+    // 프로젝트 커뮤니티: 보드 WebSocket POST 이벤트 수신 시 갱신
+    useEffect(() => {
+        if (refreshKey > 0) {
+            fetchPosts(true);
+        }
+    }, [refreshKey, fetchPosts]);
+
+    // 전역 커뮤니티: 전용 WebSocket 연결
+    const handleCommunityMessage = useCallback(() => {
+        fetchPosts(true);
+    }, [fetchPosts]);
+
+    useCommunitySocket({
+        enabled: viewType === 'grid',
+        onMessage: handleCommunityMessage,
+    });
 
     const handlePostClick = (postId: number) => {
         setSelectedPostId(postId);
@@ -53,12 +73,12 @@ export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, v
     const handleBackToList = () => {
         setSelectedPostId(null);
         setViewMode('list');
-        fetchPosts(); // 목록 갱신
+        fetchPosts();
     };
 
     const handleWriteSuccess = () => {
         setViewMode('list');
-        fetchPosts(); // 목록 갱신
+        fetchPosts();
     };
 
     const filteredPosts = posts

@@ -426,7 +426,13 @@ export type BoardEventType =
     | 'CONNECTION_DELETED'
     | 'FILE_UPLOADED'
     | 'FILES_UPLOADED'
-    | 'FILE_DELETED';
+    | 'FILE_DELETED'
+    | 'CURSOR_MOVE'
+    | 'POST_CREATED'
+    | 'POST_DELETED'
+    | 'POST_UPDATED'
+    | 'POST_COMMENT_CREATED'
+    | 'POST_COMMENT_DELETED';
 
 /**
  * 백엔드 WebSocket 메시지 구조
@@ -537,4 +543,5 @@ export interface UseBoardSocketReturn {
   reconnectAttempts: number;
   reconnect: () => void;
   disconnect: () => void;
+  sendMessage: (message: Record<string, unknown>) => void;
 }

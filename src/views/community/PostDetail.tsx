@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     getProjectPost, getCommunityPost,
     createCommunityComment, createProjectComment,
@@ -8,7 +8,7 @@ import {
     getCurrentUser
 } from '@/src/models/api';
 import type { Post, PostComment, User } from '@/src/models/types';
-import { ArrowLeft, Loader2, User as UserIcon, Send, Trash2, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, User as UserIcon, Send, Trash2, Clock, ImagePlus, X } from 'lucide-react';
 import { getImageUrl } from '@/src/models/utils/image';
 
 interface PostDetailProps {
@@ -115,6 +115,9 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState('');
     const [editContent, setEditContent] = useState('');
+    const [editFile, setEditFile] = useState<File | null>(null);
+    const [editFilePreview, setEditFilePreview] = useState<string | null>(null);
+    const [removeImage, setRemoveImage] = useState(false);
 
     useEffect(() => {
         if (post) {
@@ -122,6 +125,57 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
             setEditContent(post.content);
         }
     }, [post]);
+
+    // blob URL ref (unmount 시 정리용)
+    const editFilePreviewRef = useRef(editFilePreview);
+    editFilePreviewRef.current = editFilePreview;
+
+    useEffect(() => {
+        return () => {
+            if (editFilePreviewRef.current) URL.revokeObjectURL(editFilePreviewRef.current);
+        };
+    }, []);
+
+    const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            alert('이미지 파일만 업로드 가능합니다.');
+            return;
+        }
+        // 이전 blob URL 정리
+        if (editFilePreview) URL.revokeObjectURL(editFilePreview);
+        setEditFile(file);
+        setEditFilePreview(URL.createObjectURL(file));
+        setRemoveImage(false);
+    };
+
+    const handleRemoveEditImage = () => {
+        if (editFile) {
+            // 새로 선택한 파일 취소
+            if (editFilePreview) URL.revokeObjectURL(editFilePreview);
+            setEditFile(null);
+            setEditFilePreview(null);
+        } else if (post?.image_url) {
+            // 기존 이미지 삭제 표시
+            setRemoveImage(true);
+        }
+    };
+
+    const startEditing = () => {
+        setIsEditing(true);
+        setEditFile(null);
+        setEditFilePreview(null);
+        setRemoveImage(false);
+    };
+
+    const cancelEditing = () => {
+        setIsEditing(false);
+        if (editFilePreview) URL.revokeObjectURL(editFilePreview);
+        setEditFile(null);
+        setEditFilePreview(null);
+        setRemoveImage(false);
+    };
 
     const handleUpdatePost = async () => {
         if (!editTitle.trim() || !editContent.trim()) return;
@@ -131,7 +185,9 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
             if (mode === 'community') {
                 updatedPost = await updateCommunityPost(postId, {
                     title: editTitle,
-                    content: editContent
+                    content: editContent,
+                    file: editFile || undefined,
+                    removeImage: removeImage
                 });
             } else {
                 updatedPost = await updateProjectPost(postId, {
@@ -140,7 +196,16 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                 });
             }
 
-            setPost(prev => prev ? { ...prev, title: updatedPost.title, content: updatedPost.content } : null);
+            setPost(prev => prev ? {
+                ...prev,
+                title: updatedPost.title,
+                content: updatedPost.content,
+                image_url: updatedPost.image_url
+            } : null);
+            if (editFilePreview) URL.revokeObjectURL(editFilePreview);
+            setEditFile(null);
+            setEditFilePreview(null);
+            setRemoveImage(false);
             setIsEditing(false);
         } catch (error) {
             console.error('Failed to update post:', error);
@@ -201,7 +266,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                                     완료
                                 </button>
                                 <button
-                                    onClick={() => setIsEditing(false)}
+                                    onClick={cancelEditing}
                                     className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-colors"
                                 >
                                     취소
@@ -210,7 +275,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
                         ) : (
                             <>
                                 <button
-                                    onClick={() => setIsEditing(true)}
+                                    onClick={startEditing}
                                     className="px-4 py-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-colors"
                                 >
                                     수정
@@ -262,12 +327,81 @@ export const PostDetail: React.FC<PostDetailProps> = ({ postId, mode, onBack }) 
 
                 {/* Post Content */}
                 {isEditing ? (
-                    <textarea
-                        value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
-                        className="w-full h-64 p-4 mb-6 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800 dark:text-gray-200 leading-relaxed custom-scrollbar"
-                        placeholder="내용을 입력하세요..."
-                    />
+                    <div className="mb-6 space-y-4">
+                        <textarea
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            className="w-full h-64 p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800 dark:text-gray-200 leading-relaxed custom-scrollbar"
+                            placeholder="내용을 입력하세요..."
+                        />
+
+                        {/* 이미지 수정 영역 (커뮤니티 모드만) */}
+                        {mode === 'community' && (
+                            <div className="space-y-3">
+                                {/* 현재 이미지 미리보기 */}
+                                {editFilePreview ? (
+                                    <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-white/10">
+                                        <img
+                                            src={editFilePreview}
+                                            alt="새 이미지 미리보기"
+                                            className="w-full max-h-[300px] object-contain bg-gray-50 dark:bg-white/5"
+                                        />
+                                        <button
+                                            onClick={handleRemoveEditImage}
+                                            className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors"
+                                            title="이미지 제거"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                        <div className="absolute bottom-2 left-2 px-2 py-1 bg-blue-500/80 text-white text-xs rounded-md">
+                                            새 이미지
+                                        </div>
+                                    </div>
+                                ) : post?.image_url && !removeImage ? (
+                                    <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-white/10">
+                                        <img
+                                            src={getImageUrl(post.image_url)}
+                                            alt={post.title}
+                                            className="w-full max-h-[300px] object-contain bg-gray-50 dark:bg-white/5"
+                                        />
+                                        <button
+                                            onClick={handleRemoveEditImage}
+                                            className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors"
+                                            title="이미지 삭제"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                ) : null}
+
+                                {/* 이미지 삭제됨 표시 */}
+                                {removeImage && !editFilePreview && (
+                                    <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/30 rounded-xl text-sm text-red-600 dark:text-red-400">
+                                        <Trash2 size={14} />
+                                        <span>기존 이미지가 삭제됩니다.</span>
+                                        <button
+                                            onClick={() => setRemoveImage(false)}
+                                            className="ml-auto text-xs underline hover:no-underline"
+                                        >
+                                            취소
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* 이미지 추가/변경 버튼 */}
+                                <label className="flex items-center gap-2 px-4 py-2.5 w-fit bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-700 dark:text-gray-300 text-sm rounded-lg cursor-pointer transition-colors">
+                                    <ImagePlus size={16} />
+                                    <span>{post?.image_url && !removeImage ? '이미지 변경' : '이미지 추가'}</span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleEditImageChange}
+                                        className="hidden"
+                                    />
+                                </label>
+                            </div>
+                        )}
+                    </div>
                 ) : (
                     <>
                         {/* Post Image */}

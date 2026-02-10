@@ -35,6 +35,15 @@ const isDev = process.env.NODE_ENV === 'development';
 // 타입 정의
 // ============================================
 
+/** 라이브 커서 데이터 */
+export interface CursorData {
+  userId: number;
+  userName: string;
+  x: number;
+  y: number;
+  color: string;
+}
+
 interface UseBoardSocketOptions {
   /** 프로젝트 ID (WebSocket 연결 및 fallback용) */
   projectId: number;
@@ -60,6 +69,12 @@ interface UseBoardSocketOptions {
   // 파일 이벤트
   onFileUploaded?: (file: unknown) => void;
   onFileDeleted?: (fileId: number) => void;
+
+  // 커서 이벤트
+  onCursorMove?: (cursor: CursorData) => void;
+
+  // 게시글 이벤트 (프로젝트 커뮤니티)
+  onPostEvent?: (event: { type: string; data: Record<string, unknown> }) => void;
 
   // 연결 상태 콜백
   onConnected?: () => void;
@@ -263,6 +278,8 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
     onConnectionDeleted,
     onFileUploaded,
     onFileDeleted,
+    onCursorMove,
+    onPostEvent,
     onConnected,
     onDisconnected,
     onError,
@@ -295,6 +312,8 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
     onConnectionDeleted,
     onFileUploaded,
     onFileDeleted,
+    onCursorMove,
+    onPostEvent,
     onConnected,
     onDisconnected,
     onError,
@@ -318,6 +337,8 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
       onConnectionDeleted,
       onFileUploaded,
       onFileDeleted,
+      onCursorMove,
+      onPostEvent,
       onConnected,
       onDisconnected,
       onError,
@@ -352,10 +373,13 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
       }
 
       // Self-echo 필터링: 자신이 보낸 변경의 에코를 무시
-      const senderId = (message as unknown as Record<string, unknown>).user_id;
-      if (senderId !== undefined && senderId === currentUserIdRef.current) {
-        if (isDev) console.log(`[BoardSocket] Self-echo ignored: ${type}`);
-        return;
+      // CURSOR_MOVE는 백엔드에서 발신자 제외 relay하므로 필터링 불필요
+      if (type !== 'CURSOR_MOVE') {
+        const senderId = (message as unknown as Record<string, unknown>).user_id;
+        if (senderId !== undefined && senderId === currentUserIdRef.current) {
+          if (isDev) console.log(`[BoardSocket] Self-echo ignored: ${type}`);
+          return;
+        }
       }
 
       if (isDev) {
@@ -441,6 +465,22 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
         case 'FILE_DELETED': {
           const deleteData = data as DeleteEventData;
           callbacksRef.current.onFileDeleted?.(deleteData.id);
+          break;
+        }
+
+        case 'CURSOR_MOVE': {
+          const cursorData = data as unknown as CursorData;
+          callbacksRef.current.onCursorMove?.(cursorData);
+          break;
+        }
+
+        // 게시글 이벤트 (프로젝트 커뮤니티)
+        case 'POST_CREATED':
+        case 'POST_DELETED':
+        case 'POST_UPDATED':
+        case 'POST_COMMENT_CREATED':
+        case 'POST_COMMENT_DELETED': {
+          callbacksRef.current.onPostEvent?.({ type, data: data as Record<string, unknown> });
           break;
         }
 
@@ -629,6 +669,15 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
     };
   }, [enabled, projectId, connect, clearTimers]);
 
+  /**
+   * WebSocket으로 메시지 전송 (라이브 커서 등)
+   */
+  const sendMessage = useCallback((message: Record<string, unknown>) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify(message));
+    }
+  }, []);
+
   return {
     connectionState,
     isConnected: connectionState === 'connected',
@@ -636,6 +685,7 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
     reconnectAttempts,
     reconnect,
     disconnect,
+    sendMessage,
   };
 }
 
