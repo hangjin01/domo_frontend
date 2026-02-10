@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Project, Task, Connection, Board, Group, ViewMode, Column, Member } from '@/src/models/types';
+import type { CursorData } from '@/src/containers/hooks/board/useBoardSocket';
 import { BoardCanvas } from '@/src/views/board';
 import { CalendarView } from '@/src/views/calendar';
 import { TimelineView } from '@/src/views/timeline';
@@ -37,6 +38,7 @@ import {
     attachFileToCard,
     uploadFile,
     getBoardMembers,
+    batchUpdateCardPositions,
 } from '@/src/models/api';
 
 import { subscribeOnlineMembers } from '@/src/models/api/workspace';
@@ -88,6 +90,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     // UI 상태
     // =========================================
     const [viewMode, setViewMode] = useState<ViewMode>('board');
+    const [postRefreshKey, setPostRefreshKey] = useState(0);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [snapToGrid, setSnapToGrid] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -232,6 +235,38 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     }, []);
 
     // =========================================
+    // 라이브 커서 상태
+    // =========================================
+    const [remoteCursors, setRemoteCursors] = useState<Map<number, CursorData & { lastSeen: number }>>(new Map());
+
+    const handleCursorMove = useCallback((cursor: CursorData) => {
+        setRemoteCursors(prev => {
+            const next = new Map(prev);
+            next.set(cursor.userId, { ...cursor, lastSeen: Date.now() });
+            return next;
+        });
+    }, []);
+
+    // 비활성 커서 제거 (3초 타임아웃)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const now = Date.now();
+            setRemoteCursors(prev => {
+                let changed = false;
+                const next = new Map(prev);
+                for (const [userId, data] of next) {
+                    if (now - data.lastSeen > 3000) {
+                        next.delete(userId);
+                        changed = true;
+                    }
+                }
+                return changed ? next : prev;
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // =========================================
     // WebSocket 훅 연결
     // =========================================
     const {
@@ -239,6 +274,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         lastError: socketError,
         reconnectAttempts,
         reconnect: reconnectSocket,
+        sendMessage: sendBoardMessage,
     } = useBoardSocket({
         projectId: project.id,
         currentUserId: user?.id,
@@ -255,7 +291,22 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         onConnectionDeleted: handleSocketConnectionDeleted,
         onFileUploaded: handleSocketFileUploaded,
         onFileDeleted: handleSocketFileDeleted,
+        onCursorMove: handleCursorMove,
+        onPostEvent: () => setPostRefreshKey(k => k + 1),
     });
+
+    const handleSendCursorMove = useCallback((x: number, y: number) => {
+        sendBoardMessage({
+            type: 'CURSOR_MOVE',
+            data: {
+                userId: user?.id ?? 0,
+                userName: user?.name ?? 'User',
+                x,
+                y,
+                color: `hsl(${(user?.id ?? 0) * 137 % 360}, 70%, 50%)`,
+            },
+        });
+    }, [sendBoardMessage, user?.id, user?.name]);
 
     // =========================================
     // 멤버 및 온라인 상태 로딩
@@ -563,11 +614,32 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             await deleteGroup(groupId);
             setGroups(prev => prev.filter(x => x.id !== groupId));
             setColumns(prev => prev.filter(c => c.id !== groupId));
-            setTasks(prev => prev.map(t => t.column_id === groupId ? { ...t, column_id: undefined } : t));
+
+            // 그룹 내 카드들: 상대 좌표 → 절대 좌표로 변환 후 자유 배치
+            const groupCards = tasks.filter(t => t.column_id === groupId);
+            const cardUpdates = groupCards.map(t => ({
+                id: t.id,
+                x: (g.x ?? 0) + (t.x ?? 0),
+                y: (g.y ?? 0) + (t.y ?? 0),
+                column_id: null as number | null,
+            }));
+
+            setTasks(prev => prev.map(t => {
+                if (t.column_id !== groupId) return t;
+                const update = cardUpdates.find(u => u.id === t.id);
+                return update
+                    ? { ...t, column_id: undefined, x: update.x, y: update.y }
+                    : { ...t, column_id: undefined };
+            }));
+
+            // 서버에 새 절대 좌표 동기화
+            if (cardUpdates.length > 0) {
+                batchUpdateCardPositions(cardUpdates).catch(() => {});
+            }
         } catch {
             alert('그룹 삭제에 실패했습니다.');
         }
-    }, [groups]);
+    }, [groups, tasks]);
 
     // =========================================
     // 기타 핸들러
@@ -732,12 +804,14 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                             onToggleGrid={handleToggleGrid} onToggleTheme={handleToggleTheme}
                             onFileDropOnCard={handleFileDropOnCard} onNativeFileDrop={handleNativeFileDrop}
                             onBackgroundFileDrop={handleBackgroundFileDrop}
+                            remoteCursors={remoteCursors}
+                            onCursorMove={handleSendCursorMove}
                         />
                     )}
                     {viewMode === 'calendar' && <CalendarView tasks={tasks} onTaskSelect={handleTaskSelect} />}
                     {viewMode === 'timeline' && <TimelineView tasks={tasks} onTaskSelect={handleTaskSelect} />}
                     {viewMode === 'chat' && <ChatView projectId={project.id} currentUserId={user?.id ?? 0} currentUserName={user?.name ?? 'User'} projectName={project.name} />}
-                    {viewMode === 'community' && <CommunityBoard projectId={project.id} viewType="table" />}
+                    {viewMode === 'community' && <CommunityBoard projectId={project.id} viewType="table" refreshKey={postRefreshKey} />}
                     {viewMode === 'settings' && <SettingsView />}
                 </div>
             </div>
