@@ -24,6 +24,7 @@ import {
     GridConfig,
     indexToRelativePosition,
     indexToAbsolutePosition,
+    absolutePositionToIndex,
     relativeToAbsolute,
     absoluteToRelative,
     isPointInGroup,
@@ -66,6 +67,16 @@ interface GroupPositionSnapshot {
     y: number;
 }
 
+/** 라이브 커서 데이터 */
+interface CursorInfo {
+    userId: number;
+    userName: string;
+    x: number;
+    y: number;
+    color: string;
+    lastSeen: number;
+}
+
 interface BoardCanvasProps {
     tasks: Task[];
     connections: Connection[];
@@ -97,6 +108,9 @@ interface BoardCanvasProps {
     onBackgroundFileDrop?: (files: File[]) => Promise<void>;
     // 🔧 [FIX] 임시 ID → 실제 ID 변환 함수
     resolveColumnId?: (columnId: number | null | undefined) => number | null | undefined;
+    // 라이브 커서
+    remoteCursors?: Map<number, CursorInfo>;
+    onCursorMove?: (x: number, y: number) => void;
 }
 
 const COLUMN_WIDTH = 350;
@@ -104,7 +118,7 @@ const COLUMN_GAP = 30;
 const COLUMN_START_X = 50;
 
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onFileDropOnCard, onNativeFileDrop, onBackgroundFileDrop, resolveColumnId
+                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onFileDropOnCard, onNativeFileDrop, onBackgroundFileDrop, resolveColumnId, remoteCursors, onCursorMove
                                                         }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const boardSelectorRef = useRef<HTMLDivElement>(null);
@@ -398,6 +412,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         isTaskBeingDragged,
         getCardTransition,
         isGroupHighlighted,
+        setFreeCardPreview,
         gridConfig,
     } = useSortableGrid(
         tasks,
@@ -1250,6 +1265,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         setConnectionReconnect(null);
     };
 
+    // 라이브 커서 throttle ref
+    const lastCursorSendRef = useRef(0);
+
     const handlePointerMove = (e: React.PointerEvent) => {
         if (!containerRef.current) return;
         const container = containerRef.current;
@@ -1257,6 +1275,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         const x = e.clientX - rect.left + container.scrollLeft;
         const y = e.clientY - rect.top + container.scrollTop;
         mousePosRef.current = { x, y };
+
+        // 라이브 커서 전송 (50ms throttle)
+        if (onCursorMove) {
+            const now = Date.now();
+            if (now - lastCursorSendRef.current >= 50) {
+                lastCursorSendRef.current = now;
+                onCursorMove(x, y);
+            }
+        }
 
         // 우클릭 팬 처리
         if (panState) {
@@ -1360,7 +1387,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             // [FIX] tasksRef.current 사용 - props의 tasks는 stale할 수 있음
             onTasksUpdate(tasksRef.current.map(t => t.id === freeDragState.id ? { ...t, x: newX, y: newY } : t));
 
-            // 자유 카드 드래그 시 그룹 하이라이트 처리
+            // 자유 카드 드래그 시 그룹 하이라이트 + 드롭 프리뷰
             const cardCenterX = newX + gridConfig.cardWidth / 2;
             const cardCenterY = newY + gridConfig.cardHeight / 2;
             let targetGroup: Group | null = null;
@@ -1371,6 +1398,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 }
             }
             setFreeCardTargetGroupId(targetGroup?.id ?? null);
+            setFreeCardPreview(
+                targetGroup?.id ?? null,
+                cardCenterX, cardCenterY,
+                freeDragState.id
+            );
         } else if (connectionDraft) {
             setConnectionDraft(prev => prev ? { ...prev, currX: x, currY: y } : null);
         } else if (connectionReconnect) {
@@ -1446,36 +1478,63 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
                 if (targetGroup) {
                     // =========================================
-                    // 자유 카드 → 그룹 드롭: 상대 좌표로 변환
-                    // 그룹 내 마지막 위치에 배치
+                    // 자유 카드 → 그룹 드롭: 드롭 위치 기반 삽입
+                    // 카드 사이에 넣거나, 가장자리면 맨 끝에 배치
                     // =========================================
-                    const groupCards = tasks.filter(t => t.column_id === targetGroup.id);
-                    const newIndex = groupCards.length; // 마지막 위치
+                    const groupCards = tasks
+                        .filter(t => t.column_id === targetGroup.id && t.id !== task.id)
+                        .sort((a, b) => {
+                            const yA = a.y ?? 0; const yB = b.y ?? 0;
+                            if (yA !== yB) return yA - yB;
+                            return (a.x ?? 0) - (b.x ?? 0);
+                        });
 
-                    // 상대 좌표 계산 (그룹 내 offset)
-                    const relativePos = indexToRelativePosition(newIndex, gridConfig);
-
-                    // 그룹 안에 드롭됨 - column_id 설정 + 상대 좌표로 변경
-                    onTasksUpdate(tasks.map(t =>
-                        t.id === task.id
-                            ? { ...t, column_id: targetGroup.id, x: relativePos.x, y: relativePos.y }
-                            : t
-                    ));
-                    // 큐에 등록 (상대 좌표)
-                    queueCardChange(
-                        'card-position',
-                        task.id,
-                        { taskId: task.id, x: relativePos.x, y: relativePos.y, column_id: targetGroup.id },
-                        snapshot,
-                        async (payload) => {
-                            await batchUpdateCardPositions([{
-                                id: payload.taskId,
-                                x: payload.x,
-                                y: payload.y,
-                                column_id: payload.column_id ?? null,
-                            }]);
-                        }
+                    // 드롭 위치로 삽입 인덱스 계산
+                    const dropIndex = absolutePositionToIndex(
+                        cardCenterX, cardCenterY,
+                        targetGroup.x, targetGroup.y,
+                        groupCards.length,
+                        gridConfig
                     );
+
+                    // 새 순서 배열 생성
+                    const newOrder = [...groupCards];
+                    newOrder.splice(dropIndex, 0, task);
+
+                    // 모든 카드의 상대 좌표 재계산
+                    const positionMap = new Map<number, { x: number; y: number }>();
+                    for (let i = 0; i < newOrder.length; i++) {
+                        positionMap.set(newOrder[i].id, indexToRelativePosition(i, gridConfig));
+                    }
+
+                    // Batch 업데이트 수집
+                    const batchUpdates: Array<{ id: number; x: number; y: number; column_id: number | null }> = [];
+
+                    const updatedTasks = tasks.map(t => {
+                        const newPos = positionMap.get(t.id);
+                        if (newPos) {
+                            const changed = t.id === task.id || t.x !== newPos.x || t.y !== newPos.y;
+                            if (changed) {
+                                batchUpdates.push({ id: t.id, x: newPos.x, y: newPos.y, column_id: targetGroup.id });
+                            }
+                            return { ...t, column_id: targetGroup.id, x: newPos.x, y: newPos.y };
+                        }
+                        return t;
+                    });
+
+                    onTasksUpdate(updatedTasks);
+
+                    // Batch API 동기화
+                    const batchItems: BatchChangeItem[] = batchUpdates.map(u => ({
+                        entityId: u.id,
+                        payload: { taskId: u.id, x: u.x, y: u.y, column_id: u.column_id },
+                        snapshot: u.id === task.id
+                            ? snapshot
+                            : { x: tasks.find(t => t.id === u.id)?.x ?? 0, y: tasks.find(t => t.id === u.id)?.y ?? 0, column_id: tasks.find(t => t.id === u.id)?.column_id },
+                    }));
+                    if (batchItems.length > 0) {
+                        queueBatchCardChange(batchItems);
+                    }
                 } else {
                     // 그룹 밖에 드롭됨 - 절대 좌표로 저장 (Optimistic)
                     saveTaskPosition(freeDragState.id, task.x, task.y, snapshot);
@@ -1486,7 +1545,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             // self-echo 필터가 서버 응답의 롤백을 방지함
             const cardId = freeDragState.id;
             setFreeDragState(null);
-            setFreeCardTargetGroupId(null); // 하이라이트 초기화
+            setFreeCardTargetGroupId(null);
+            setFreeCardPreview(null); // 드롭 프리뷰 초기화
 
             unlockEntity(cardId);
             if (isDev) console.log('[Guard] Free card drag complete - Lock released immediately');
@@ -1932,6 +1992,61 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
             <input type="file" multiple ref={fileInputRef} className="hidden" onChange={(e) => { /* handleGlobalFileChange */ }} />
             <input type="file" multiple ref={taskFileInputRef} className="hidden" onChange={(e) => { /* handleTaskFileChange */ }} />
+
+            {/* 라이브 커서 렌더링 */}
+            {remoteCursors && remoteCursors.size > 0 && (
+                <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
+                    {Array.from(remoteCursors.values()).map((cursor) => {
+                        const age = Date.now() - cursor.lastSeen;
+                        const opacity = age > 2000 ? Math.max(0, 1 - (age - 2000) / 1000) : 1;
+                        if (opacity <= 0) return null;
+
+                        // 스크롤 오프셋 + 컨테이너 위치 보정
+                        // 커서 좌표는 스크롤 컨테이너 기준 캔버스 절대좌표이지만,
+                        // 오버레이는 래퍼(헤더 포함) 기준이므로 offsetTop/Left 보정 필요
+                        const containerEl = containerRef.current;
+                        if (!containerEl) return null;
+                        const displayX = cursor.x - containerEl.scrollLeft + containerEl.offsetLeft;
+                        const displayY = cursor.y - containerEl.scrollTop + containerEl.offsetTop;
+
+                        return (
+                            <div
+                                key={cursor.userId}
+                                className="absolute transition-all duration-75 ease-out"
+                                style={{
+                                    left: displayX,
+                                    top: displayY,
+                                    opacity,
+                                }}
+                            >
+                                {/* 커서: 둥글고 끝이 뾰족한 형태 */}
+                                <svg
+                                    width="24"
+                                    height="28"
+                                    viewBox="0 0 24 28"
+                                    fill="none"
+                                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
+                                >
+                                    <path
+                                        d="M3 2L5 22L10 17L16 26L20 24L14 15L21 13L3 2Z"
+                                        fill={cursor.color}
+                                        stroke="white"
+                                        strokeWidth="1.5"
+                                        strokeLinejoin="round"
+                                    />
+                                </svg>
+                                {/* 유저 이름 라벨 */}
+                                <div
+                                    className="absolute left-5 top-5 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white whitespace-nowrap shadow-sm"
+                                    style={{ backgroundColor: cursor.color }}
+                                >
+                                    {cursor.userName}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Optimistic UI: 에러 토스트 */}
             {showErrorToast && lastError && (

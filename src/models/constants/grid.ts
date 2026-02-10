@@ -348,20 +348,16 @@ export function migrateToRelativeCoordinate(
 export function isAlreadyRelativeCoordinate(
     cardX: number,
     cardY: number,
-    groupX: number,
-    groupY: number,
+    _groupX: number,
+    _groupY: number,
     config: GridConfig = DEFAULT_GRID_CONFIG
 ): boolean {
-    // 카드 좌표가 그룹 좌표보다 크거나 같으면 절대 좌표 (레거시)
-    if (cardX >= groupX && cardY >= groupY) {
-        return false;
-    }
-
     // 상대 좌표의 합리적인 범위
     const maxRelativeX = config.padding * 2 + config.columns * (config.cardWidth + config.gap);
     const minRelativeY = config.headerHeight + config.padding;
 
-    // 범위 내에 있으면 상대 좌표
+    // 상대 좌표는 항상 작은 양수 범위 내 (그룹 위치와 무관)
+    // 이전 휴리스틱(cardX >= groupX)은 그룹이 음수 좌표일 때 오판하므로 제거
     const isLikelyRelativeX = cardX >= 0 && cardX <= maxRelativeX;
     const isLikelyRelativeY = cardY >= minRelativeY;
 
