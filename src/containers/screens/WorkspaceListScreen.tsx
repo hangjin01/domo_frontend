@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
     getWorkspaces,
     createWorkspace,
     deleteWorkspace,
 } from '@/src/models/api';
 import type { Workspace, User } from '@/src/models/types';
+import { useWorkspaceListSocket } from '@/src/containers/hooks/workspace';
 import {
     Building2,
     Plus,
@@ -187,7 +188,7 @@ function WorkspaceCard({ workspace, onSelect, onDelete }: WorkspaceCardProps) {
     return (
         <div
             onClick={() => onSelect(workspace)}
-            className="glass-card rounded-[2rem] p-6 cursor-pointer group relative overflow-hidden min-h-[200px] flex flex-col hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+            className="glass-card rounded-[2rem] p-6 cursor-pointer group relative overflow-hidden min-h-[200px] flex flex-col transition-colors duration-200"
         >
             {/* 배경 그라데이션 */}
             <div className={`absolute inset-0 bg-gradient-to-br ${colorClass} opacity-50`} />
@@ -274,19 +275,49 @@ export function WorkspaceListScreen({ user, onSelectWorkspace, onLogout }: Works
     const [showCreateModal, setShowCreateModal] = useState(false);
 
     // 워크스페이스 목록 로딩
-    useEffect(() => {
-        const fetchWorkspaces = async () => {
-            try {
-                const data = await getWorkspaces();
-                setWorkspaces(data);
-            } catch (error) {
-                console.error('Failed to fetch workspaces:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchWorkspaces();
+    const fetchWorkspaces = useCallback(async () => {
+        try {
+            const data = await getWorkspaces();
+            setWorkspaces(data);
+        } catch (error) {
+            console.error('Failed to fetch workspaces:', error);
+        } finally {
+            setLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        fetchWorkspaces();
+    }, [fetchWorkspaces]);
+
+    // 실시간 WebSocket: 각 워크스페이스에 연결하여 변경사항 수신
+    const workspaceIds = useMemo(() => workspaces.map(w => w.id), [workspaces]);
+    const refetchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleWorkspaceEvent = useCallback(() => {
+        // debounce: 짧은 시간에 여러 이벤트 수신 시 한 번만 refetch
+        if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = setTimeout(() => {
+            fetchWorkspaces();
+        }, 500);
+    }, [fetchWorkspaces]);
+
+    useWorkspaceListSocket({
+        workspaceIds,
+        currentUserId: user.id,
+        enabled: !loading && workspaceIds.length > 0,
+        onEvent: handleWorkspaceEvent,
+    });
+
+    // 탭 포커스 시 자동 refetch (초대 수락 등 외부 변경 감지)
+    useEffect(() => {
+        const handleFocus = () => { fetchWorkspaces(); };
+        window.addEventListener('focus', handleFocus);
+        return () => {
+            window.removeEventListener('focus', handleFocus);
+            if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+        };
+    }, [fetchWorkspaces]);
 
     const handleLogout = () => {
         onLogout();
