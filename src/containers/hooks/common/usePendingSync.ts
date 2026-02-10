@@ -169,6 +169,8 @@ export function usePendingSync<T = unknown, S = unknown>(
   const apiCallsRef = useRef<Map<string, (payload: T) => Promise<void>>>(new Map());
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isSyncingRef = useRef(false);
+  const successTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const retryTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 콜백 refs (항상 최신 함수 참조)
   const onSyncStartRef = useRef(onSyncStart);
@@ -360,6 +362,16 @@ export function usePendingSync<T = unknown, S = unknown>(
 
     if ((!hasBatchChanges && !hasSingleChanges) || isSyncingRef.current) return;
 
+    // 이전 사이클의 타이머 정리 (재진입 시 누적 방지)
+    if (successTimerRef.current) {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+
     if (isDev) console.log('[Optimistic] executeSync 시작, Batch:', hasBatchChanges, ', 단건:', hasSingleChanges);
 
     isSyncingRef.current = true;
@@ -387,9 +399,20 @@ export function usePendingSync<T = unknown, S = unknown>(
       allSuccessIds.push(...successIds);
       allErrors.push(...errors);
 
-      // 상태 업데이트
-      setPendingChanges(updatedChanges);
-      pendingChangesRef.current = updatedChanges;
+      // [Race Condition 방지] 비동기 실행 중 queueChange로 새로 추가된 변경사항 보호
+      // 기존: setPendingChanges(updatedChanges) → 새 변경사항 유실
+      // 수정: 처리 완료된 ID만 제거하고, 새로 추가된 변경사항은 유지
+      const processedIds = new Set([
+        ...successIds,
+        ...errors.map(e => e.changeId),
+      ]);
+      const retryMap = new Map(updatedChanges.map(c => [c.id, c]));
+      const merged = pendingChangesRef.current
+          .filter(c => !processedIds.has(c.id))   // 성공/최종실패만 제거
+          .map(c => retryMap.get(c.id) || c);      // retry 아이템은 retryCount 업데이트
+
+      pendingChangesRef.current = merged;
+      setPendingChanges(merged);
 
       if (errors.length > 0 || updatedChanges.length > 0) {
         allSuccess = false;
@@ -408,8 +431,9 @@ export function usePendingSync<T = unknown, S = unknown>(
       setLastError(null);
       onSyncSuccessRef.current?.(allSuccessIds);
 
-      // 성공 상태 2초 후 idle로 전환
-      setTimeout(() => {
+      // 성공 상태 2초 후 idle로 전환 (ref로 추적하여 unmount 시 정리)
+      successTimerRef.current = setTimeout(() => {
+        successTimerRef.current = null;
         setSyncStatus(prev => (prev === 'success' ? 'idle' : prev));
       }, 2000);
     }
@@ -419,7 +443,8 @@ export function usePendingSync<T = unknown, S = unknown>(
     const hasRetrySingle = pendingChangesRef.current.length > 0;
 
     if (hasRetryBatch || hasRetrySingle) {
-      setTimeout(() => {
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
         executeSync();
       }, retryDelayMs);
     }
@@ -447,36 +472,40 @@ export function usePendingSync<T = unknown, S = unknown>(
   const queueBatchChange = useCallback((items: BatchChangeItem[]) => {
     if (items.length === 0) return;
 
-    setBatchChange(prev => {
-      const existingItems = prev?.items || [];
-      const mergedItems: BatchChangeItem[] = [...existingItems];
+    // ref에서 직접 읽어서 동기적으로 계산 (flush와의 race condition 방지)
+    const prev = batchChangeRef.current;
+    const existingItems = prev?.items || [];
+    const mergedItems: BatchChangeItem[] = [...existingItems];
 
-      for (const newItem of items) {
-        const existingIndex = mergedItems.findIndex(
-            item => item.entityId === newItem.entityId
-        );
+    for (const newItem of items) {
+      const existingIndex = mergedItems.findIndex(
+          item => item.entityId === newItem.entityId
+      );
 
-        if (existingIndex >= 0) {
-          // 기존 항목 업데이트 (payload만 변경, snapshot 유지)
-          mergedItems[existingIndex] = {
-            ...mergedItems[existingIndex],
-            payload: newItem.payload,
-            // snapshot은 최초 값 유지
-          };
-        } else {
-          // 새 항목 추가
-          mergedItems.push(newItem);
-        }
+      if (existingIndex >= 0) {
+        // 기존 항목 업데이트 (payload만 변경, snapshot 유지)
+        mergedItems[existingIndex] = {
+          ...mergedItems[existingIndex],
+          payload: newItem.payload,
+          // snapshot은 최초 값 유지
+        };
+      } else {
+        // 새 항목 추가
+        mergedItems.push(newItem);
       }
+    }
 
-      return {
-        id: prev?.id || generateChangeId(),
-        type: 'card-position-batch',
-        items: mergedItems,
-        timestamp: Date.now(),
-        retryCount: prev?.retryCount || 0,
-      };
-    });
+    const newBatch: BatchChange = {
+      id: prev?.id || generateChangeId(),
+      type: 'card-position-batch',
+      items: mergedItems,
+      timestamp: Date.now(),
+      retryCount: prev?.retryCount || 0,
+    };
+
+    // ref와 state 동시 업데이트 (race condition 방지)
+    batchChangeRef.current = newBatch;
+    setBatchChange(newBatch);
 
     // pending 상태로 설정
     setSyncStatus('pending');
@@ -496,44 +525,42 @@ export function usePendingSync<T = unknown, S = unknown>(
       snapshot: S,
       apiCall: (payload: T) => Promise<void>
   ) => {
-    setPendingChanges(prev => {
-      // 같은 엔티티의 기존 변경이 있으면 병합 (마지막 값으로 덮어쓰기)
-      const existingIndex = prev.findIndex(
-          c => c.entityId === entityId && c.type === type
-      );
+    // ref에서 직접 읽어서 동기적으로 계산 (flush와의 race condition 방지)
+    const prev = pendingChangesRef.current;
+    const existingIndex = prev.findIndex(
+        c => c.entityId === entityId && c.type === type
+    );
 
-      const changeId = existingIndex >= 0
-          ? prev[existingIndex].id
-          : generateChangeId();
+    const changeId = existingIndex >= 0
+        ? prev[existingIndex].id
+        : generateChangeId();
 
-      // API 콜 저장/업데이트
-      apiCallsRef.current.set(changeId, apiCall);
+    // API 콜 저장/업데이트
+    apiCallsRef.current.set(changeId, apiCall);
 
-      const newChange: PendingChange<T, S> = {
-        id: changeId,
-        type,
-        entityId,
-        payload,
-        snapshot: existingIndex >= 0 ? prev[existingIndex].snapshot : snapshot, // 최초 스냅샷 유지
-        timestamp: Date.now(),
-        retryCount: 0,
-      };
+    const newChange: PendingChange<T, S> = {
+      id: changeId,
+      type,
+      entityId,
+      payload,
+      snapshot: existingIndex >= 0 ? prev[existingIndex].snapshot : snapshot, // 최초 스냅샷 유지
+      timestamp: Date.now(),
+      retryCount: 0,
+    };
 
-      if (existingIndex >= 0) {
-        // 기존 변경 업데이트
-        const updated = [...prev];
-        updated[existingIndex] = newChange;
-        return updated;
-      } else {
-        // 새 변경 추가
-        return [...prev, newChange];
-      }
-    });
+    let newChanges: PendingChange<T, S>[];
+    if (existingIndex >= 0) {
+      newChanges = [...prev];
+      newChanges[existingIndex] = newChange;
+    } else {
+      newChanges = [...prev, newChange];
+    }
 
-    // pending 상태로 설정 (debounce 대기 중)
+    // ref와 state 동시 업데이트 (race condition 방지)
+    pendingChangesRef.current = newChanges;
+    setPendingChanges(newChanges);
+
     setSyncStatus('pending');
-
-    // 동기화 스케줄링
     scheduleSync();
   }, [scheduleSync]);
 
@@ -619,6 +646,8 @@ export function usePendingSync<T = unknown, S = unknown>(
     // effect 내에서 미리 복사해둠 (린트 규칙 준수)
     const apiCallsMap = apiCallsRef.current;
     const debounceTimer = debounceTimerRef;
+    const successTimer = successTimerRef;
+    const retryTimer = retryTimerRef;
     const batchChangeSnapshot = batchChangeRef;
     const pendingChangesSnapshot = pendingChangesRef;
     const isSyncingSnapshot = isSyncingRef;
@@ -630,6 +659,18 @@ export function usePendingSync<T = unknown, S = unknown>(
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
+      }
+
+      // success→idle 전환 타이머 취소
+      if (successTimer.current) {
+        clearTimeout(successTimer.current);
+        successTimer.current = null;
+      }
+
+      // 재시도 타이머 취소
+      if (retryTimer.current) {
+        clearTimeout(retryTimer.current);
+        retryTimer.current = null;
       }
 
       // Batch 변경사항 즉시 저장

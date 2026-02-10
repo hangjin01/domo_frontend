@@ -97,8 +97,6 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     const [filePanelRefreshKey, setFilePanelRefreshKey] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
-
     // =========================================
     // Optimistic Update 중복 방지
     // =========================================
@@ -150,9 +148,14 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     const handleSocketTasksBatchUpdated = useCallback((updatedTasks: Task[]) => {
         setTasks(prev => {
             const map = new Map(updatedTasks.map(t => [t.id, t]));
-            return prev.map(t => map.has(t.id) ? { ...t, ...map.get(t.id)! } : t);
+            return prev.map(t => {
+                if (!map.has(t.id)) return t;
+                if (isPendingOperation('CARD_UPDATED', t.id) ||
+                    isPendingOperation('CARD_CREATED', t.id)) return t;
+                return { ...t, ...map.get(t.id)! };
+            });
         });
-    }, []);
+    }, [isPendingOperation]);
 
     const handleSocketColumnCreated = useCallback((column: Column) => {
         setColumns(prev => prev.some(c => c.id === column.id) ? prev : [...prev, column]);
@@ -398,15 +401,12 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             .filter((t, i, s) => i === s.findIndex(x => x.id === t.id)));
 
         try {
-            setIsSaving(true);
             await updateTask(taskId, updates);
         } catch (err) {
             removePendingOperation('CARD_UPDATED', taskId);
             setTasks(prev => prev.map(t => t.id === taskId ? original : t)
                 .filter((t, i, s) => i === s.findIndex(x => x.id === t.id)));
             throw err;
-        } finally {
-            setIsSaving(false);
         }
     }, [addPendingOperation, removePendingOperation]);
 
@@ -531,6 +531,14 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
 
         for (const cg of parentChanged) {
             try { await updateGroup(cg.id, { parentId: cg.parentId, depth: cg.depth }); } catch {}
+        }
+
+        const titleChanged = newGroups.filter(g => {
+            const e = groups.find(x => x.id === g.id);
+            return e && e.title !== g.title;
+        });
+        for (const tg of titleChanged) {
+            try { await updateGroup(tg.id, { title: tg.title }); } catch {}
         }
 
         setGroups(newGroups);
@@ -706,11 +714,6 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                                     className="flex items-center gap-1.5 bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-red-500/20">
                                 <WifiOff className="w-3.5 h-3.5" /><span>오프라인</span>
                             </button>
-                        )}
-                        {isSaving && (
-                            <div className="flex items-center gap-2 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm shadow-lg">
-                                <Loader2 className="w-4 h-4 animate-spin" /><span>저장 중...</span>
-                            </div>
                         )}
                     </div>
 

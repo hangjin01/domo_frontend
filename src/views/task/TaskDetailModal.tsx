@@ -124,6 +124,15 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
+                const target = e.target as HTMLElement;
+                if (
+                    target instanceof HTMLTextAreaElement ||
+                    target instanceof HTMLInputElement ||
+                    target.isContentEditable
+                ) {
+                    (target as HTMLElement).blur();
+                    return;
+                }
                 onClose();
             }
         };

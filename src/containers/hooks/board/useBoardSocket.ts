@@ -279,6 +279,7 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isManualDisconnectRef = useRef(false);
   const mountedRef = useRef(true);
+  const currentUserIdRef = useRef(currentUserId);
 
   // 콜백 refs (의존성 변경 시에도 최신 콜백 참조)
   const callbacksRef = useRef({
@@ -298,6 +299,9 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
     onDisconnected,
     onError,
   });
+
+  // currentUserId ref 업데이트
+  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
 
   // 콜백 refs 업데이트
   useEffect(() => {
@@ -344,6 +348,13 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
 
       // pong 메시지 처리 (heartbeat 응답)
       if (type === 'pong' as unknown) {
+        return;
+      }
+
+      // Self-echo 필터링: 자신이 보낸 변경의 에코를 무시
+      const senderId = (message as unknown as Record<string, unknown>).user_id;
+      if (senderId !== undefined && senderId === currentUserIdRef.current) {
+        if (isDev) console.log(`[BoardSocket] Self-echo ignored: ${type}`);
         return;
       }
 

@@ -816,6 +816,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     useEffect(() => {
         const handleKeyDown = async (evt: KeyboardEvent) => {
+            // 입력 필드에 포커스가 있으면 단축키 무시
+            const target = evt.target as HTMLElement;
+            if (
+                target instanceof HTMLTextAreaElement ||
+                target instanceof HTMLInputElement ||
+                target.isContentEditable
+            ) return;
+
             const key = evt.key.toLowerCase();
             if (key === 'c' && selectedTaskIds.size > 0) {
                 evt.preventDefault();
@@ -1402,20 +1410,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
         // SortableGrid 드래그 종료 - 현재 드래그 위치 전달 (비동기 대기 없음)
         if (dragContext) {
-            // [Race Condition Guard] flush 후 Lock 해제
             const cardId = dragContext.taskId;
 
             endDrag(sortableDragPos ?? undefined);
             setSortableDragPos(null);
 
-            void (async () => {
-                try {
-                    await flushCardChanges();
-                } finally {
-                    unlockEntity(cardId);
-                    if (isDev) console.log('[Guard] Sortable card drag complete - Lock released after flush');
-                }
-            })();
+            // flush 없이 즉시 unlock — debounce가 자동으로 sync하고,
+            // self-echo 필터가 서버 응답의 롤백을 방지함
+            unlockEntity(cardId);
+            if (isDev) console.log('[Guard] Sortable card drag complete - Lock released immediately');
             return;
         }
 
@@ -1479,19 +1482,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 }
             }
 
-            // [Race Condition Guard] flush 후 Lock 해제
+            // flush 없이 즉시 unlock — debounce가 자동으로 sync하고,
+            // self-echo 필터가 서버 응답의 롤백을 방지함
             const cardId = freeDragState.id;
             setFreeDragState(null);
             setFreeCardTargetGroupId(null); // 하이라이트 초기화
 
-            void (async () => {
-                try {
-                    await flushCardChanges();
-                } finally {
-                    unlockEntity(cardId);
-                    if (isDev) console.log('[Guard] Free card drag complete - Lock released after flush');
-                }
-            })();
+            unlockEntity(cardId);
+            if (isDev) console.log('[Guard] Free card drag complete - Lock released immediately');
         }
         if (groupDragState) {
             const draggedGroup = groups.find(g => g.id === groupDragState.id);
@@ -1568,26 +1566,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 // 그룹 위치만 저장하면 됨 (N개 카드 → 1회 API 호출로 최적화)
             }
 
-            // [Race Condition Guard] Lock 해제 전 대기 중인 변경사항 동기화
-            // flush()가 완료될 때까지 Lock을 유지하여 롤백 방지
+            // flush 없이 즉시 unlock — debounce가 자동으로 sync하고,
+            // self-echo 필터가 서버 응답의 롤백을 방지함
             const groupId = groupDragState.id;
             const containedCardIds = groupDragState.containedTaskIds.map(t => t.id);
 
-            // 상태 먼저 정리 (드래그 상태 해제)
+            // 상태 정리 (드래그 상태 해제)
             setGroupDragState(null);
 
-            // 비동기로 flush 후 Lock 해제 (UI 블로킹 방지)
-            void (async () => {
-                try {
-                    await flushCardChanges();
-                    await flushGroupChanges();
-                } finally {
-                    // flush 완료 후 Lock 해제 (성공/실패 무관)
-                    unlockEntity(groupId);
-                    unlockEntities(containedCardIds);
-                    if (isDev) console.log('[Guard] Group drag complete - Locks released after flush');
-                }
-            })();
+            // 즉시 Lock 해제
+            unlockEntity(groupId);
+            unlockEntities(containedCardIds);
+            if (isDev) console.log('[Guard] Group drag complete - Locks released immediately');
         }
         if (connectionDraft) setConnectionDraft(null);
 
@@ -1668,7 +1658,13 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 onPointerDown={(evt) => handlePointerDown(evt)}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
-                onPointerLeave={handlePointerUp}
+                onPointerLeave={(e) => {
+                    // 카드/그룹 드래그 중에는 pointerleave 무시
+                    // 포인터 캡처가 자식 엘리먼트(카드/그룹)에 설정되어 있으므로
+                    // 컨테이너의 pointerleave는 리렌더 시 발생하는 부작용 (Firefox 특히)
+                    if (freeDragState || dragContext || pendingCardDrag || groupDragState) return;
+                    handlePointerUp(e);
+                }}
                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 onDrop={(e) => {
                     e.preventDefault();
