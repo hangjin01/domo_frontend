@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/voice/VoiceControls.tsx
+ * 마이크/음소거·출력 및 나가기 등 음성 제어 버튼을 렌더링합니다.
+ * 버튼의 활성 상태와 실제 MediaStreamTrack의 enabled 상태는 부모 훅의 제어 결과와 맞아야 합니다.
+ */
+
 'use client';
 
 import React from 'react';

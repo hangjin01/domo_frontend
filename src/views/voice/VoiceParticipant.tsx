@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/voice/VoiceParticipant.tsx
+ * 참여자별 이름·아바타·말하는 상태·음소거 표시와 원격 오디오 재생을 다룹니다.
+ * 화면 표시만 업데이트하는 것과 오디오 요소에 새 스트림을 연결하는 effect의 역할을 구분합니다.
+ */
+
 'use client';
 
 import React from 'react';

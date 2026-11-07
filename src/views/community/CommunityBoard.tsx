@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/community/CommunityBoard.tsx
+ * 게시글 목록·상세·작성 화면 사이의 전환을 조정하는 게시판 컨테이너형 뷰입니다.
+ * 전역 커뮤니티와 프로젝트 게시판은 API 범위가 다릅니다. projectId/모드에 맞는 조회·생성 경로를 사용해야 합니다.
+ */
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -95,7 +101,7 @@ export const CommunityBoard: React.FC<CommunityBoardProps> = ({ projectId = 1, v
         });
 
     return (
-        <div className="flex-1 h-full flex flex-col bg-gray-50 dark:bg-[#0F111A] overflow-hidden relative">
+        <div className="flex-1 h-full flex flex-col bg-gray-50 dark:bg-[var(--app-dark)] overflow-hidden relative">
             {/* Background Ambience */}
             <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/5 dark:bg-blue-900/5 rounded-full blur-[100px]"></div>

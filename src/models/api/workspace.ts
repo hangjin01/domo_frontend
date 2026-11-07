@@ -1,7 +1,21 @@
+/**
+ * [파일 안내] frontend/src/models/api/workspace.ts
+ * 담당 범위: 워크스페이스/프로젝트 CRUD·팀원·초대·온라인 상태.
+ * 호출 흐름: 화면/훅 → 이 모듈 → 로컬 저장/샘플 또는 공통 HTTP 래퍼 → 응답을 화면 타입으로 반환합니다.
+ * 단일 팀 상세 API가 없어 실제 모드 일부 조회는 목록을 읽고 ID로 찾습니다. mock 멤버/초대는 아직 stub입니다.
+ * 함수의 성공 응답과 실제 기능 지원 여부는 같지 않습니다. 미구현/제약은 docs/05-recovery-and-backlog.md를 함께 확인하세요.
+ */
+
 import type { Workspace, Project, User, Member } from '../types';
 import { API_CONFIG, apiFetch, mockDelay } from './config';
-import { MOCK_WORKSPACES, MOCK_PROJECTS, MOCK_ONLINE_MEMBERS, MOCK_MEMBERS } from './mock-data';
+import { MOCK_WORKSPACES, MOCK_ONLINE_MEMBERS, MOCK_MEMBERS } from './mock-data';
 import { mapProjectResponse, mapWorkspaceMemberToMember } from './mappers';
+import { mockId, readMock, writeMock } from './mock-store';
+import { requireMockUser } from './mock-auth';
+
+// 팀 안에 projects를 함께 보관하는 단일 원본입니다. 별도 프로젝트 배열과의 동기화 오류를 피합니다.
+// v2에 아직 저장값이 없으면 DOMO 데모 팀 1개와 샘플 프로젝트 1개를 반환합니다.
+function mockWorkspaces(): Workspace[] { return readMock('workspaces', MOCK_WORKSPACES); }
 
 // ============================================
 // 백엔드 응답 타입 (내부용)
@@ -26,7 +40,7 @@ interface BackendMemberResponse {
 export async function getWorkspaces(): Promise<Workspace[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    return MOCK_WORKSPACES;
+    return mockWorkspaces();
   }
 
   // 백엔드: GET /api/workspaces
@@ -38,7 +52,9 @@ export async function getWorkspaces(): Promise<Workspace[]> {
     description?: string;
   }[]>('/workspaces');
 
-  // 각 워크스페이스의 프로젝트 목록도 가져오기
+  // 각 워크스페이스의 프로젝트 목록도 가져오기.
+  // 팀 수만큼 추가 요청이 발생하는 구조입니다. 프로젝트 조회 실패를 빈 배열로 처리하므로
+  // 빈 팀 표시가 실제 프로젝트 부재인지 네트워크 실패인지 UI에서 구별되지 않을 수 있습니다.
   const workspaces: Workspace[] = await Promise.all(
       response.map(async (ws) => {
         let projects: Project[] = [];
@@ -66,7 +82,7 @@ export async function getWorkspaces(): Promise<Workspace[]> {
 export async function getWorkspace(workspaceId: number): Promise<Workspace> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const workspace = MOCK_WORKSPACES.find(w => w.id === workspaceId);
+    const workspace = mockWorkspaces().find(w => w.id === workspaceId);
     if (!workspace) {
       throw new Error('워크스페이스를 찾을 수 없습니다.');
     }
@@ -104,13 +120,15 @@ export async function getWorkspace(workspaceId: number): Promise<Workspace> {
 export async function createWorkspace(name: string, description?: string): Promise<Workspace> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    return {
-      id: Date.now(),
+    const workspace: Workspace = {
+      id: mockId(),
       name,
       description: description || '',
-      owner_id: 1,
+      owner_id: requireMockUser().id,
       projects: [],
     };
+    writeMock('workspaces', [...mockWorkspaces(), workspace]);
+    return workspace;
   }
 
   // 백엔드: POST /api/workspaces
@@ -142,9 +160,13 @@ export async function updateWorkspace(
 ): Promise<Workspace> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const ws = MOCK_WORKSPACES.find(w => w.id === workspaceId);
+    const workspaces = mockWorkspaces();
+    const ws = workspaces.find(w => w.id === workspaceId);
     if (!ws) throw new Error('워크스페이스를 찾을 수 없습니다.');
-    return { ...ws, ...data };
+    Object.assign(ws, data);
+    ws.projects?.forEach(project => { project.workspace = ws.name; });
+    writeMock('workspaces', workspaces);
+    return ws;
   }
 
   // 백엔드: PATCH /api/workspaces/{id}
@@ -171,8 +193,10 @@ export async function updateWorkspace(
  * 워크스페이스 삭제
  */
 export async function deleteWorkspace(workspaceId: number): Promise<void> {
+  // mock은 목록 항목만 제거합니다. board/posts/chat의 고아 데이터 연쇄 정리는 아직 없습니다.
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
+    writeMock('workspaces', mockWorkspaces().filter(ws => ws.id !== workspaceId));
     return;
   }
 
@@ -192,7 +216,7 @@ export async function deleteWorkspace(workspaceId: number): Promise<void> {
 export async function getMyProjects(): Promise<Project[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(400);
-    return MOCK_PROJECTS;
+    return mockWorkspaces().flatMap(ws => ws.projects || []);
   }
 
   // 1. 모든 워크스페이스 조회
@@ -242,7 +266,7 @@ export async function getMyProjects(): Promise<Project[]> {
 export async function getProjects(workspaceId: number): Promise<Project[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const workspace = MOCK_WORKSPACES.find(w => w.id === workspaceId);
+    const workspace = mockWorkspaces().find(w => w.id === workspaceId);
     return workspace?.projects || [];
   }
 
@@ -269,7 +293,7 @@ export async function getProjects(workspaceId: number): Promise<Project[]> {
 export async function getProject(projectId: number): Promise<Project> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const project = MOCK_PROJECTS.find(p => p.id === projectId);
+    const project = mockWorkspaces().flatMap(ws => ws.projects || []).find(p => p.id === projectId);
     if (!project) {
       throw new Error('프로젝트를 찾을 수 없습니다.');
     }
@@ -298,10 +322,13 @@ export async function createProject(
 ): Promise<Project> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    return {
-      id: Date.now(),
+    const workspaces = mockWorkspaces();
+    const workspace = workspaces.find(ws => ws.id === workspaceId);
+    if (!workspace) throw new Error('워크스페이스를 찾을 수 없습니다.');
+    const project: Project = {
+      id: mockId(),
       name,
-      workspace: '워크스페이스',
+      workspace: workspace.name,
       workspace_id: workspaceId,
       description,
       role: 'Member',
@@ -310,6 +337,9 @@ export async function createProject(
       lastActivity: '방금 전',
       color: '#DBEAFE',
     };
+    workspace.projects = [...(workspace.projects || []), project];
+    writeMock('workspaces', workspaces);
+    return project;
   }
 
   // 백엔드: POST /api/workspaces/{id}/projects
@@ -342,9 +372,12 @@ export async function updateProject(
 ): Promise<Project> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const proj = MOCK_PROJECTS.find(p => p.id === projectId);
+    const workspaces = mockWorkspaces();
+    const proj = workspaces.flatMap(ws => ws.projects || []).find(p => p.id === projectId);
     if (!proj) throw new Error('프로젝트를 찾을 수 없습니다.');
-    return { ...proj, ...data };
+    Object.assign(proj, data);
+    writeMock('workspaces', workspaces);
+    return proj;
   }
 
   // 백엔드: PATCH /api/projects/{id}
@@ -367,6 +400,9 @@ export async function updateProject(
 export async function deleteProject(projectId: number): Promise<void> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
+    writeMock('workspaces', mockWorkspaces().map(ws => ({
+      ...ws, projects: (ws.projects || []).filter(project => project.id !== projectId),
+    })));
     return;
   }
 

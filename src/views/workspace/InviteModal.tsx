@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/workspace/InviteModal.tsx
+ * 팀원 초대 링크 발급/복사와 기존 사용자 이메일 직접 추가 UI를 제공합니다.
+ * 링크 만료/역할 선택은 서버 검증이 필요합니다. mock 성공 응답은 실제 멤버십 반영을 보장하지 않습니다.
+ */
+
 'use client';
 
 import React, { useState } from 'react';
@@ -139,7 +145,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             />
 
             {/* Modal */}
-            <div className="relative w-full max-w-md bg-white dark:bg-[#1E212B] rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative w-full max-w-md bg-white dark:bg-[var(--surface-panel)] rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/10">
                     <div>

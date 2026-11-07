@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/dock/FileListPanel.tsx
+ * 프로젝트 파일을 나열하고 업로드·선택·삭제·카드로 드래그하는 동작을 제공합니다.
+ * mock 파일 API는 아직 완전한 바이너리 저장소가 아닙니다. 샘플 목록이 보인다고 해당 파일 다운로드가 가능한 것은 아닙니다.
+ */
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';

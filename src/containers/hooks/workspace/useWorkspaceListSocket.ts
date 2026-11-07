@@ -1,7 +1,13 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/workspace/useWorkspaceListSocket.ts
+ * 워크스페이스 목록 화면에서 팀 이벤트를 받아 목록 갱신을 유도하는 연결 훅입니다.
+ * 여러 팀을 다루므로 팀 ID별 연결 수명과 재연결 타이머를 구분합니다. mock에서는 서버 연결을 열지 않습니다.
+ */
+
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { getWebSocketUrl } from '@/src/models/api/config';
+import { API_CONFIG, getWebSocketUrl } from '@/src/models/api/config';
 import type { WorkspaceSocketMessage } from './useWorkspaceSocket';
 
 const HEARTBEAT_INTERVAL = 30000;
@@ -56,6 +62,7 @@ export function useWorkspaceListSocket(options: UseWorkspaceListSocketOptions) {
   }, []);
 
   const connectToWorkspace = useCallback((wsId: number) => {
+    if (API_CONFIG.USE_MOCK) return;
     // 이미 연결 중이면 스킵
     const existing = connectionsRef.current.get(wsId);
     if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {

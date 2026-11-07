@@ -1,3 +1,11 @@
+/**
+ * [파일 안내] frontend/src/models/api/schedule.ts
+ * 담당 범위: 개인 시간표·공통 빈 시간·프로젝트 일정 CRUD.
+ * 호출 흐름: 화면/훅 → 이 모듈 → 로컬 저장/샘플 또는 공통 HTTP 래퍼 → 응답을 화면 타입으로 반환합니다.
+ * Schedule과 ProjectEvent는 카드의 마감일과 별개 모델입니다. 현재 캘린더 UI 전체가 이 API에 연결되어 있는 것은 아닙니다.
+ * 함수의 성공 응답과 실제 기능 지원 여부는 같지 않습니다. 미구현/제약은 docs/05-recovery-and-backlog.md를 함께 확인하세요.
+ */
+
 import { API_CONFIG, apiFetch, mockDelay } from './config';
 
 // ============================================

@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/WorkspaceListScreen.tsx
+ * 워크스페이스 목록, 팀 생성/편집/삭제 UI와 사용자 동작을 묶습니다.
+ * 실제 API와 mock 모두 models/api/workspace를 통과합니다. 임시 모달 입력을 곧바로 저장된 팀으로 간주하지 않습니다.
+ */
+
 'use client';
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
@@ -65,7 +71,7 @@ function CreateWorkspaceModal({ isOpen, onClose, onSuccess }: CreateWorkspaceMod
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div
-                className="w-full max-w-md bg-white dark:bg-[#1E212B] rounded-3xl shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-200"
+                className="w-full max-w-md bg-white dark:bg-[var(--surface-panel)] rounded-3xl shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center gap-3 mb-6">
@@ -88,7 +94,7 @@ function CreateWorkspaceModal({ isOpen, onClose, onSuccess }: CreateWorkspaceMod
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="예: 캡스톤디자인 팀"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--surface-raised)] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                             autoFocus
                         />
                     </div>
@@ -102,7 +108,7 @@ function CreateWorkspaceModal({ isOpen, onClose, onSuccess }: CreateWorkspaceMod
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="워크스페이스에 대한 간단한 설명"
                             rows={3}
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none"
+                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--surface-raised)] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none"
                         />
                     </div>
 
@@ -332,7 +338,7 @@ export function WorkspaceListScreen({ user, onSelectWorkspace, onLogout }: Works
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-[#0F111A] text-gray-900 dark:text-white">
+        <div className="min-h-screen bg-gray-50 dark:bg-[var(--app-dark)] text-gray-900 dark:text-white">
             {/* Background Ambience */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/10 dark:bg-blue-900/10 rounded-full blur-[100px]" />

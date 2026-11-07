@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/board/SortableGroup.tsx
+ * 그룹 틀과 정렬 카드/드롭 자리 표시자를 렌더링합니다. 위치·크기·드래그 상태를 받아 시각적으로 표현합니다.
+ * 실제 카드 데이터 저장은 상위 조정자/동기화 훅의 책임입니다. 미리보기의 transform과 최종 좌표를 혼동하지 마세요.
+ */
+
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -83,6 +89,7 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
 
     return (
         <div
+            data-group-id={group.id}
             className={`
                 absolute rounded-2xl border-2 transition-all duration-300 ease-out z-0
                 ${isDropTarget
@@ -149,12 +156,12 @@ export const SortableGroup: React.FC<SortableGroupProps> = ({
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm(`"${group.title}" 그룹을 삭제하시겠습니까?\n그룹 내 카드는 자유 배치로 이동됩니다.`)) {
-                            onDelete?.(group.id);
-                        }
+                        // 확인과 저장은 상위 핸들러 한 곳에서 처리해 이중 확인창을 방지합니다.
+                        onDelete?.(group.id);
                     }}
-                    className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-all duration-200 opacity-0 group-hover/sortable-group:opacity-100 hover:scale-105"
-                    title="그룹 삭제"
+                    className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-all duration-200 hover:scale-105"
+                    title="그룹 삭제 (카드 유지)"
+                    aria-label={`${group.title} 그룹 삭제 (카드 유지)`}
                 >
                     <Trash2 size={16} className="text-red-500" />
                 </button>

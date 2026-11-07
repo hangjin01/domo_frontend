@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/profile/ProfileCard.tsx
+ * 이름·닉네임·프로필 이미지를 보여 주고 편집 요청을 API에 전달합니다.
+ * mock 이미지는 작은 data URL을 브라우저에 저장합니다. 실제 파일 업로드와 저장 용량/오류 처리가 다릅니다.
+ */
+
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -28,7 +34,7 @@ export function ProfileCard({ user, setUser }: Props) {
             setUser(updatedUser);
         } catch (error) {
             console.error('Profile image update failed', error);
-            alert('이미지 업로드 실패');
+            alert(error instanceof Error ? error.message : '이미지 업로드 실패');
         } finally {
             setIsUploading(false);
         }
@@ -46,7 +52,7 @@ export function ProfileCard({ user, setUser }: Props) {
         try {
             const updateData: { name?: string; nickname?: string } = {};
             if (nameChanged) updateData.name = newName;
-            if (nicknameChanged) updateData.nickname = newNickname || undefined;
+            if (nicknameChanged) updateData.nickname = newNickname;
 
             const updatedUser = await updateMyInfo(updateData);
             setUser(updatedUser);
@@ -58,7 +64,7 @@ export function ProfileCard({ user, setUser }: Props) {
     };
 
     return (
-        <div className="relative group w-full max-w-sm mx-auto bg-white/40 dark:bg-[#1E212B]/60 backdrop-blur-md border border-white/20 dark:border-gray-700/50 rounded-2xl p-8 shadow-xl flex flex-col items-center">
+        <div className="relative group w-full max-w-sm mx-auto bg-white/40 dark:bg-[var(--surface-panel)]/60 backdrop-blur-md border border-white/20 dark:border-gray-700/50 rounded-2xl p-8 shadow-xl flex flex-col items-center">
             {/* 프로필 이미지 */}
             <div className="relative mb-6">
                 <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white/20 shadow-lg relative group-hover:border-domo-primary transition-colors duration-300 bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">

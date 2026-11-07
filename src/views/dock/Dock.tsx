@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/dock/Dock.tsx
+ * 보드 하단 도크를 구성하고 대시보드·파일·프로필·채팅·음성 진입을 관리합니다.
+ * 모달/패널 열림 상태와 음성 스트림 상태를 함께 다룹니다. 패널 닫힘과 실제 음성 퇴장은 같은 동작이 아닐 수 있습니다.
+ */
+
 "use client";
 
 import React, { useState, useEffect } from 'react';

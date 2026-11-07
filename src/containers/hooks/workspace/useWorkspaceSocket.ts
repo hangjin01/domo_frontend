@@ -1,7 +1,14 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/workspace/useWorkspaceSocket.ts
+ * 특정 워크스페이스의 프로젝트·팀원·접속자 변경을 구독합니다. query의 user_id는 현재 서버에 전달되는 식별자입니다.
+ * 클라이언트가 보낸 사용자 ID가 권한 검증을 대신할 수는 없습니다. 서버 세션 검증은 별도 보강 대상입니다.
+ * mock에서는 실제 연결을 생략합니다. 활성화 조건과 타이머/소켓 정리 로직을 함께 확인하세요.
+ */
+
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { getWebSocketUrl } from '@/src/models/api/config';
+import { API_CONFIG, getWebSocketUrl } from '@/src/models/api/config';
 import type { SocketConnectionState } from '@/src/models/types';
 
 // ============================================
@@ -112,6 +119,7 @@ export function useWorkspaceSocket(options: UseWorkspaceSocketOptions): UseWorks
   }, []);
 
   const connect = useCallback(() => {
+    if (API_CONFIG.USE_MOCK) return;
     if (!enabled || !workspaceId) return;
 
     if (socketRef.current?.readyState === WebSocket.CONNECTING ||

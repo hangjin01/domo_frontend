@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/ProjectSelectScreen.tsx
+ * 선택한 워크스페이스의 프로젝트 목록과 생성/수정/삭제, 마이페이지·설정·커뮤니티 메뉴를 조정합니다.
+ * 프로젝트 선택 결과는 부모의 라우팅 콜백으로 전달합니다. 메뉴 전환 상태와 서버/브라우저에 저장된 프로젝트 데이터는 별개입니다.
+ */
+
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
@@ -63,7 +69,7 @@ function ProfileCard({ user, setUser }: { user: User; setUser: (u: User) => void
             setUser(updatedUser);
         } catch (error) {
             console.error('Failed to update profile image', error);
-            alert('이미지 업로드에 실패했습니다.');
+            alert(error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.');
         } finally {
             setIsUploading(false);
         }
@@ -132,7 +138,7 @@ function ProfileCard({ user, setUser }: { user: User; setUser: (u: User) => void
                 ) : (
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center justify-center gap-2 group">
                         {user.name}
-                        <button onClick={() => setIsEditing(true)} className="text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-all p-1">
+                        <button onClick={() => { setNewName(user.name); setIsEditing(true); }} className="text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-all p-1">
                             <Edit2 size={16} />
                         </button>
                     </h2>
@@ -257,7 +263,7 @@ function CreateProjectModal({ isOpen, onClose, onSuccess, workspaceId, workspace
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div
-                className="w-full max-w-md bg-white dark:bg-[#1E212B] rounded-3xl shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-200"
+                className="w-full max-w-md bg-white dark:bg-[var(--surface-panel)] rounded-3xl shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center gap-3 mb-6">
@@ -280,7 +286,7 @@ function CreateProjectModal({ isOpen, onClose, onSuccess, workspaceId, workspace
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="예: API 서버 개발"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--surface-raised)] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                             autoFocus
                         />
                     </div>
@@ -294,7 +300,7 @@ function CreateProjectModal({ isOpen, onClose, onSuccess, workspaceId, workspace
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="프로젝트에 대한 간단한 설명"
                             rows={3}
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c333a] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none"
+                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--surface-raised)] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none"
                         />
                     </div>
 
@@ -515,7 +521,7 @@ export function ProjectSelectScreen({ workspace, user: propUser, onSelectProject
     );
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-[#0F111A] text-gray-900 dark:text-white flex overflow-hidden">
+        <div className="min-h-screen bg-gray-50 dark:bg-[var(--app-dark)] text-gray-900 dark:text-white flex overflow-hidden">
             {/* Background */}
             <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/10 dark:bg-blue-900/10 rounded-full blur-[100px]" />
@@ -695,7 +701,7 @@ export function ProjectSelectScreen({ workspace, user: propUser, onSelectProject
                                 <input
                                     type="text"
                                     placeholder="프로젝트 검색..."
-                                    className="w-full max-w-md pl-12 pr-4 py-3.5 rounded-2xl text-sm shadow-sm bg-white dark:bg-[#1E212B] border-none ring-1 ring-gray-200 dark:ring-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    className="w-full max-w-md pl-12 pr-4 py-3.5 rounded-2xl text-sm shadow-sm bg-white dark:bg-[var(--surface-panel)] border-none ring-1 ring-gray-200 dark:ring-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
@@ -816,8 +822,6 @@ export function ProjectSelectScreen({ workspace, user: propUser, onSelectProject
                         <SettingsView
                             key={settingsTab}
                             initialTab={settingsTab}
-                            onLogout={onLogout}
-                            user={{ name: user.name, email: user.email, profile_image: user.profile_image }}
                         />
                     </div>
                 )}

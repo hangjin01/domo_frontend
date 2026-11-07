@@ -1,7 +1,17 @@
+/**
+ * [파일 안내] frontend/src/views/task/TaskCard.tsx
+ * Task를 일반 카드/스티키/파일 카드 등으로 렌더링하고 선택·상태 변경·파일 드롭을 전달합니다.
+ * 카드 종류에 따라 조기 반환하므로 모든 React 훅은 그보다 위에서 호출해야 합니다. 조건부 훅은 렌더 간 순서를 깨뜨립니다.
+ * 그룹 내부 카드는 부모 폭/상대좌표를 사용하며 실제 저장은 전달된 상위 콜백이 수행합니다.
+ */
+
 'use client';
 
 import React, { useState } from 'react';
 import { Task } from '@/src/models/types';
+import { MoneyBadge } from './MoneyFields';
+import { cardSize } from '@/src/models/utils/cardLayout';
+import { CardResizeHandle } from './CardResizeHandle';
 import { getStickyStyle, getContrastColor } from '@/src/models/utils/canvas';
 import {
     FolderOpen, FileText, Download, Folder, Clock, AlignLeft, Paperclip, MoreHorizontal, ChevronRight,
@@ -9,6 +19,7 @@ import {
 } from 'lucide-react';
 
 interface TaskCardProps {
+    onResize?: (size: { width: number; height: number }) => void | Promise<void>;
     task: Task;
     onClick: () => void;
     onMove?: () => void;
@@ -56,10 +67,12 @@ const STATUS_OPTIONS = [
 ];
 
 export const TaskCard: React.FC<TaskCardProps> = ({
-                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile, isFileDropTarget, onFileDragEnter, onFileDragLeave, onFileDrop, onNativeFileDrop, isGrouped = false
+                                                      task, onClick, onMove, onStatusChange, transparent, variant = 'default', style, isSelected, onPointerDown, onConnectStart, onConnectEnd, onAttachFile, isFileDropTarget, onFileDragEnter, onFileDragLeave, onFileDrop, onNativeFileDrop, isGrouped = false, onResize
                                                   }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showStatusMenu, setShowStatusMenu] = useState(false);
+    // 파일 카드의 조기 반환보다 먼저 호출해 카드 종류가 바뀌어도 훅 순서를 유지합니다.
+    const dragCounterRef = React.useRef(0);
 
     // 너비 클래스 결정: 그룹 내(w-full) vs 자유 배치(고정 너비)
     const widthClass = isGrouped ? 'w-full' : 'w-[280px]';
@@ -121,12 +134,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                     onKeyDown={handleKeyDown}
                     tabIndex={0}
                     className={`absolute group flex flex-col w-full cursor-grab active:cursor-grabbing focus:outline-none z-30 select-none bg-[#FFF9C4] dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg shadow-xl transition-all duration-200`}
-                    style={style}
+                    data-card-variant={variant}
+                    style={{ ...style, ...cardSize(task) }}
                 >
+                    <CardResizeHandle task={task} onResize={onResize} />
                     <div className="flex items-center justify-between p-3 border-b border-yellow-200/50 dark:border-yellow-700/30">
                         <div className="flex items-center gap-2">
                             <FolderOpen size={18} className="text-yellow-600 dark:text-yellow-400" />
                             <span className="font-bold text-gray-800 dark:text-yellow-100 text-sm truncate max-w-[180px]">{task.title}</span>
+                            <MoneyBadge task={task} />
                         </div>
                         <span className="text-[10px] font-bold bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-200 px-1.5 py-0.5 rounded-full">{task.files?.length}</span>
                     </div>
@@ -181,8 +197,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 onKeyDown={handleKeyDown}
                 tabIndex={0}
                 className="absolute group flex flex-col items-center w-[100px] cursor-grab active:cursor-grabbing focus:outline-none z-10 select-none"
-                style={style}
+                data-card-variant={variant}
+                style={{ ...style, ...cardSize(task) }}
             >
+                <CardResizeHandle task={task} onResize={onResize} />
                 <div className={`relative w-16 h-20 bg-white rounded-md shadow-sm flex items-center justify-center transition-transform group-hover:scale-105 ${isSelected ? 'ring-2 ring-domo-highlight ring-offset-2 ring-offset-[#0F111A]' : ''}`}>
                     {/* Folded corner effect for single file, or Tab for folder */}
                     {isFolder ? (
@@ -229,9 +247,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                         <div className="w-1.5 h-1.5 bg-gray-400 rounded-full group-hover/handle:bg-domo-primary transition-colors"></div>
                     </div>
                 </div>
-                <span className={`mt-2 text-[11px] text-center leading-tight px-1.5 py-0.5 rounded break-all line-clamp-2 max-w-full ${isSelected ? 'bg-domo-highlight text-white' : 'text-gray-200 group-hover:bg-white/10'}`}>
+                <span className={`mt-2 text-[11px] text-center leading-tight px-1.5 py-0.5 rounded break-all line-clamp-2 max-w-full ${isSelected ? 'bg-domo-highlight text-white' : 'text-gray-800 dark:text-gray-200 group-hover:bg-white/10'}`}>
                 {task.title}
             </span>
+                <MoneyBadge task={task} />
             </div>
         );
     }
@@ -240,7 +259,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     const isCustomColor = task.color?.startsWith('#');
     const stickyStyle = !isCustomColor && variant === 'sticky' ? getStickyStyle(String(task.id), task.color) : null;
 
-    let cardClasses = "group rounded-lg cursor-grab active:cursor-grabbing transition-shadow relative backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-domo-primary focus:ring-offset-2 dark:focus:ring-offset-[#1E212B] ";
+    // 스티키 카드는 불투명하므로 배경 blur를 제거해 카드 수만큼 발생하는 합성을 줄입니다.
+    let cardClasses = "group rounded-lg cursor-grab active:cursor-grabbing transition-shadow relative focus:outline-none focus:ring-2 focus:ring-domo-primary focus:ring-offset-2 dark:focus:ring-offset-[#1E212B] ";
+    if (variant !== 'sticky') cardClasses += 'backdrop-blur-sm ';
 
     if (variant === 'sticky') {
         if (stickyStyle) {
@@ -250,7 +271,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             cardClasses += `${textColorClass} border border-gray-200 dark:border-gray-700 p-4 shadow-md hover:shadow-xl duration-200 ${widthClass} flex flex-col justify-between absolute select-none ${isExpanded ? 'z-30' : 'z-10'}`;
         }
     } else {
-        cardClasses += `${transparent ? 'bg-black/20 hover:bg-black/30 dark:bg-black/20 dark:hover:bg-black/30 bg-white/40 hover:bg-white/50' : 'bg-white dark:bg-[#22272b] hover:bg-gray-50 dark:hover:bg-[#2c333a]'} p-3 mb-2 border border-gray-200 dark:border-transparent hover:border-gray-300 dark:hover:border-gray-500 shadow-sm z-10`;
+        cardClasses += `${transparent ? 'bg-black/20 hover:bg-black/30 dark:bg-black/20 dark:hover:bg-black/30 bg-white/40 hover:bg-white/50' : 'bg-white dark:bg-[var(--surface-panel)] hover:bg-gray-50 dark:hover:bg-[var(--surface-raised)]'} p-3 mb-2 border border-gray-200 dark:border-transparent hover:border-gray-300 dark:hover:border-gray-500 shadow-sm z-10`;
     }
 
     if (isSelected) {
@@ -272,8 +293,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     };
 
     // 파일 드래그 이벤트 핸들러 - 카운터 방식으로 자식 요소 버블링 문제 해결
-    const dragCounterRef = React.useRef(0);
-
     const handleFileDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -340,6 +359,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         <div
             id={`task-${task.id}`}
             draggable={variant !== 'sticky'}
+            data-card-variant={variant}
             onDragStart={handleDragStart}
             onPointerDown={onPointerDown}
             onClick={handleClick}
@@ -353,9 +373,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             className={cardClasses}
             style={{
                 ...style,
+                ...(variant === 'sticky' ? cardSize(task) : {}),
                 backgroundColor: (variant === 'sticky' && isCustomColor) ? task.color : undefined
             }}
         >
+            {variant === 'sticky' && <CardResizeHandle task={task} onResize={onResize} />}
             {variant === 'sticky' && (
                 <div className="absolute -top-2 -right-2 z-30">
                     <button
@@ -432,11 +454,12 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 </div>
             </div>
 
+            <MoneyBadge task={task} />
             {variant === 'sticky' && task.description && (
                 <div
                     className={`transition-all duration-300 ease-in-out overflow-hidden mt-3 ${isExpanded ? 'max-h-96' : 'max-h-[1.45rem]'}`}
                 >
-                    <p className="text-sm opacity-80 font-medium leading-relaxed">
+                    <p className="text-sm font-medium leading-relaxed">
                         {task.description}
                     </p>
                 </div>

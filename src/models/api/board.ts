@@ -1,5 +1,16 @@
+/**
+ * [파일 안내] frontend/src/models/api/board.ts
+ * 담당 범위: 카드·컬럼/그룹·연결선·댓글·위치 배치 갱신.
+ * 호출 흐름: 화면/훅 → 이 모듈 → 로컬 저장/샘플 또는 공통 HTTP 래퍼 → 응답을 화면 타입으로 반환합니다.
+ * Group과 Column은 같은 서버 테이블의 UI 표현입니다. Task.boardId와 column_id는 다른 ID이며 실제 모드 일부 매핑은 후속 복구 대상입니다.
+ * 함수의 성공 응답과 실제 기능 지원 여부는 같지 않습니다. 미구현/제약은 docs/05-recovery-and-backlog.md를 함께 확인하세요.
+ */
+
 import type { Task, Connection, Member, EditingCard, Comment, Column, Group } from '../types';
-import { API_CONFIG, apiFetch, mockDelay } from './config';
+import { API_CONFIG, apiFetch, mockDelay as delay } from './config';
+import { loadMockBoard, persistMockBoard } from './mock-data';
+import { requireMockUser } from './mock-auth';
+import { mockId } from './mock-store';
 import {
   MOCK_TASKS,
   MOCK_CONNECTIONS,
@@ -14,6 +25,7 @@ import {
   getMockTask,
   getMockTasksByProject,
   addMockConnection,
+  updateMockConnection,
   deleteMockConnection,
   getMockConnectionsByProject,
   addMockColumn,
@@ -27,6 +39,13 @@ import {
   getMockGroup,
   getMockGroupsByProject,
 } from './mock-data';
+
+async function mockDelay(ms: number) {
+  // 지연을 기다린 후 저장소를 읽어 이전 모듈 메모리의 배열로 최신 데이터를 덮어쓰지 않게 합니다.
+  // 이 파일의 mock 분기는 이 래퍼를 거쳐야 새로고침/이전 API 변경 결과와 일치합니다.
+  await delay(ms);
+  loadMockBoard();
+}
 
 // ============================================
 // 좌표 정수화 유틸리티
@@ -56,6 +75,8 @@ function normalizePosition(x: number, y: number): { x: number; y: number } {
 // ============================================
 
 interface BackendCardResponse {
+  // 현재 서버 계약에는 project_id가 빠져 있습니다. column_id를 프로젝트 ID로 해석하면 안 됩니다.
+  // 정확한 프로젝트 맥락은 조회 호출부가 전달해야 하며, 기존 매핑의 정합성은 후속 복구 대상입니다.
   id: number;
   title: string;
   content: string | null;
@@ -265,16 +286,7 @@ export async function getColumns(projectId: number): Promise<Column[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
     // Mock 컬럼 데이터 - 헬퍼 함수 사용
-    const columns = getMockColumnsByProject(projectId);
-    if (columns.length > 0) {
-      return columns;
-    }
-    // 프로젝트에 컬럼이 없으면 기본 컬럼 반환
-    return [
-      { id: 1, title: '할 일', status: 'todo', order: 0, project_id: projectId },
-      { id: 2, title: '진행 중', status: 'in-progress', order: 1, project_id: projectId },
-      { id: 3, title: '완료', status: 'done', order: 2, project_id: projectId },
-    ];
+    return getMockColumnsByProject(projectId);
   }
 
   const response = await apiFetch<BackendColumnResponse[]>(`/projects/${projectId}/columns`);
@@ -317,6 +329,7 @@ export async function createColumn(
     await mockDelay(200);
     // Mock 헬퍼 함수 사용
     const newColumn = addMockColumn({
+      ...data,
       title: data.title,
       status: inferStatusFromColumn(data.title),
       order: data.order || 0,
@@ -451,11 +464,9 @@ export async function updateGroup(
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
     // [좌표 정수화] Mock에서도 적용
-    const normalizedUpdates = {
-      ...updates,
-      x: updates.x !== undefined ? normalizeCoord(updates.x) : undefined,
-      y: updates.y !== undefined ? normalizeCoord(updates.y) : undefined,
-    };
+    const normalizedUpdates = { ...updates };
+    if (updates.x !== undefined) normalizedUpdates.x = normalizeCoord(updates.x);
+    if (updates.y !== undefined) normalizedUpdates.y = normalizeCoord(updates.y);
     const updated = updateMockGroup(groupId, normalizedUpdates);
     if (!updated) {
       throw new Error('그룹을 찾을 수 없습니다.');
@@ -554,17 +565,13 @@ export async function assignCardToGroup(
 export async function getBoard(projectId: number): Promise<{ column: Column; cards: Task[] }[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    const columns: Column[] = [
-      { id: 1, title: '할 일', status: 'todo', order: 0, project_id: projectId },
-      { id: 2, title: '진행 중', status: 'in-progress', order: 1, project_id: projectId },
-      { id: 3, title: '완료', status: 'done', order: 2, project_id: projectId },
-    ];
+    const columns = getMockColumnsByProject(projectId);
 
     return columns.map(col => ({
       column: col,
       cards: MOCK_TASKS.filter(t =>
-          (t.boardId === projectId || projectId === 1) &&
-          (t.status === col.status || (col.status === 'in-progress' && t.status === 'doing'))
+          t.boardId === projectId &&
+          t.column_id === col.id
       ),
     }));
   }
@@ -596,7 +603,7 @@ export async function getBoard(projectId: number): Promise<{ column: Column; car
 export async function getAllCards(projectId: number): Promise<Task[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    return MOCK_TASKS.filter(t => t.boardId === projectId || projectId === 1);
+    return MOCK_TASKS.filter(t => t.boardId === projectId);
   }
 
   const response = await apiFetch<BackendCardResponse[]>(
@@ -613,7 +620,7 @@ export async function getAllCards(projectId: number): Promise<Task[]> {
 export async function getBoardCards(projectId: number): Promise<Task[]> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    return MOCK_TASKS.filter(t => t.boardId === projectId || projectId === 1);
+    return MOCK_TASKS.filter(t => t.boardId === projectId && t.column_id != null);
   }
 
   const response = await apiFetch<{ column: BackendColumnResponse; cards: BackendCardResponse[] }[]>(
@@ -759,6 +766,10 @@ export async function updateTask(
     return updatedTask;
   }
 
+  // 금액 옵션은 현재 로컬 데스크톱/목 데이터 저장소에서 지원합니다.
+  // 서버에 필드가 없는데 성공한 것처럼 보이지 않도록 명시적으로 실패시킵니다.
+  if (updates.money !== undefined) throw new Error('금액 옵션은 현재 로컬 모드에서 지원합니다.');
+  if (updates.width !== undefined || updates.height !== undefined) throw new Error('카드 크기 저장은 현재 로컬 모드에서 지원합니다.');
   // 백엔드 형식으로 변환
   const payload: Record<string, unknown> = {};
 
@@ -850,13 +861,18 @@ export async function getCardComments(cardId: number): Promise<Comment[]> {
 export async function createCardComment(cardId: number, content: string): Promise<Comment> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(300);
-    return {
-      id: Date.now(),
-      user: '김도모',
-      user_id: 1,
+    const task = getMockTask(cardId);
+    if (!task) throw new Error('태스크를 찾을 수 없습니다.');
+    const user = requireMockUser();
+    const comment: Comment = {
+      id: mockId(),
+      user: user.name,
+      user_id: user.id,
       text: content,
       timestamp: '방금 전',
     };
+    updateMockTask(cardId, { comments: [...(task.comments || []), comment] });
+    return comment;
   }
 
   const response = await apiFetch<{
@@ -887,6 +903,9 @@ export async function createCardComment(cardId: number, content: string): Promis
 export async function deleteCardComment(commentId: number): Promise<void> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
+    const task = MOCK_TASKS.find(task => task.comments?.some(comment => comment.id === commentId));
+    if (!task) throw new Error('댓글을 찾을 수 없습니다.');
+    updateMockTask(task.id, { comments: task.comments!.filter(comment => comment.id !== commentId) });
     return;
   }
 
@@ -916,7 +935,7 @@ export async function getConnections(projectId: number): Promise<Connection[]> {
     from: conn.from,
     to: conn.to,
     boardId: conn.boardId,
-    style: conn.style as 'solid' | 'dashed',
+    style: conn.style as Connection['style'],
     shape: conn.shape as 'bezier' | 'straight',
     // 백엔드가 snake_case로 보내면 변환
     sourceHandle: (conn.sourceHandle || conn.source_handle || 'right') as 'left' | 'right',
@@ -958,7 +977,7 @@ export async function createConnection(
     from: response.from,
     to: response.to,
     boardId: response.boardId || projectId,
-    style: response.style as 'solid' | 'dashed',
+    style: response.style as Connection['style'],
     shape: response.shape as 'bezier' | 'straight',
     sourceHandle: (response.sourceHandle || response.source_handle || 'right') as 'left' | 'right',
     targetHandle: (response.targetHandle || response.target_handle || 'left') as 'left' | 'right',
@@ -993,11 +1012,7 @@ export async function updateConnection(
 ): Promise<Connection> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    const conn = MOCK_CONNECTIONS.find(c => c.id === connectionId);
-    if (!conn) {
-      throw new Error('연결선을 찾을 수 없습니다.');
-    }
-    return { ...conn, ...updates };
+    return updateMockConnection(connectionId, updates);
   }
 
   const response = await apiFetch<BackendConnectionResponse>(
@@ -1020,7 +1035,7 @@ export async function updateConnection(
     from: response.from,
     to: response.to,
     boardId: response.boardId,
-    style: response.style as 'solid' | 'dashed',
+    style: response.style as Connection['style'],
     shape: response.shape as 'bezier' | 'straight',
     sourceHandle: (response.sourceHandle || response.source_handle || 'right') as 'left' | 'right',
     targetHandle: (response.targetHandle || response.target_handle || 'left') as 'left' | 'right',

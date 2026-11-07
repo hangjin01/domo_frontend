@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/board/SyncStatusIndicator.tsx
+ * 대기/저장 중/실패 상태와 재시도 UI를 보여 줍니다. SyncErrorToast는 저장 실패를 알리는 보조 컴포넌트입니다.
+ * 표시된 성공이 모든 서버 협업 기능의 정상 상태를 뜻하지는 않으며 전달받은 동기화 상태에만 해당합니다.
+ */
+
 'use client';
 
 import React, { useEffect, useState } from 'react';

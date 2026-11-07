@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/VerifySuccessScreen.tsx
+ * 학교 이메일 인증 완료를 안내하고 로그인으로 돌아가는 경로를 제공합니다.
+ * 완료 화면의 표시만으로 세션이 생성되지는 않습니다. 로그인 여부는 인증 API와 UserContext에서 판단합니다.
+ */
+
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';

@@ -1,19 +1,35 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/BoardScreen.tsx
+ * 프로젝트 보드의 상위 조정자입니다. 카드·그룹·연결선·현재 탭을 상태로 갖고 하위 뷰에 데이터와 편집 콜백을 전달합니다.
+ * 초기 API 조회 → 화면 상태 구성 → 사용자 조작의 낙관적 반영 → API 저장/소켓 이벤트 반영 순서로 읽으면 이해하기 쉽습니다.
+ * BoardCanvas는 조작/좌표를, 이 화면은 프로젝트 맥락과 도메인 변경을 담당합니다. 다만 일부 API 호출은 캔버스에도 있습니다.
+ * 주의: 보드 추가/이름은 아직 화면 state 중심이며, 그룹 크기·색·접힘 등 모든 속성의 저장이 완성된 것은 아닙니다.
+ */
+
 // src/containers/screens/BoardScreen.tsx
 'use client';
+import { API_CONFIG } from '@/src/models/api/config';
+import { arrangeMockBoard } from '@/src/models/api/mock-data';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Project, Task, Connection, Board, Group, ViewMode, Column, Member } from '@/src/models/types';
 import type { CursorData } from '@/src/containers/hooks/board/useBoardSocket';
 import { BoardCanvas } from '@/src/views/board';
 import { CalendarView } from '@/src/views/calendar';
 import { TimelineView } from '@/src/views/timeline';
+import { MoneyView } from '@/src/views/board/MoneyView';
+import { MoneyContext } from '@/src/views/task/MoneyFields';
+import { calculateMoney } from '@/src/models/utils/money';
 import { SettingsView } from '@/src/views/profile';
 import { TaskDetailModal } from '@/src/views/task';
 import { Mascot } from '@/src/views/common';
+import { DeleteConfirmation } from '@/src/views/common/DeleteConfirmation';
 import { Dock, FileListPanel } from '@/src/views/dock';
 import { CommunityBoard } from '@/src/views/community';
 import { ChatView } from '@/src/views/chat';
 import { useUser } from '@/src/lib/contexts/UserContext';
+import { toggleTheme } from '@/src/lib/theme';
+import { selectBoardTasks, removeBoardGroup } from '@/src/models/utils/boardIndex';
 import { useBoardSocket } from '@/src/containers/hooks/board';
 import {
     GRID_PADDING,
@@ -67,6 +83,8 @@ interface BoardScreenProps {
 // ============================================
 export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => {
     const { user } = useUser();
+    // 이 화면은 테마 선택값을 표시하지 않으므로 구독하지 않습니다.
+    // CSS 변수만 갱신하면 충분하며, 색을 바꿀 때 큰 보드 트리의 재렌더를 피합니다.
 
     // =========================================
     // 데이터 상태
@@ -467,14 +485,16 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     }, [getColumnById, handleTaskUpdate]);
 
     const handleTaskDelete = useCallback(async (taskId: number) => {
-        let prev: Task[] = [];
         addPendingOperation('CARD_DELETED', taskId);
-        setTasks(p => { prev = p; return p.filter(t => t.id !== taskId); });
         try {
             await deleteTask(taskId);
-        } catch {
+            // API가 성공한 뒤 카드와 연결선을 함께 반영합니다. 실패한 삭제로 연결만 사라지지 않습니다.
+            setTasks(p => p.filter(t => t.id !== taskId));
+            setConnections(p => p.filter(c => c.from !== taskId && c.to !== taskId));
+            setSelectedTask(p => p?.id === taskId ? null : p);
+        } catch (error) {
             removePendingOperation('CARD_DELETED', taskId);
-            setTasks(prev);
+            throw error;
         }
     }, [addPendingOperation, removePendingOperation]);
 
@@ -511,8 +531,9 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         setConnections(p => p.map(c => c.id === connectionId ? { ...c, ...updates } : c));
         try {
             await updateConnection(connectionId, updates);
-        } catch {
+        } catch (error) {
             setConnections(prev);
+            throw error;
         }
     }, []);
 
@@ -607,39 +628,24 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         }
     }, [groups]);
 
+    const deletingGroups = useRef(new Set<number>());
+    const [pendingGroupDelete, setPendingGroupDelete] = useState<number | null>(null);
     const handleGroupDelete = useCallback(async (groupId: number) => {
+        if (deletingGroups.current.has(groupId)) return;
         const g = groups.find(x => x.id === groupId);
-        if (!g || !confirm(`'${g.title}' 그룹을 삭제하시겠습니까?\n(카드들은 보드에 남아있습니다)`)) return;
+        if (!g) return;
+        deletingGroups.current.add(groupId);
         try {
             await deleteGroup(groupId);
-            setGroups(prev => prev.filter(x => x.id !== groupId));
+            // API가 카드 대피와 그룹 삭제를 함께 저장합니다. 별도 위치 저장 요청은 하지 않습니다.
+            // 같은 좌표 변환 함수를 mock과 UI가 사용하므로 새로고침 전후 위치가 일치합니다.
+            setGroups(prev => removeBoardGroup([], prev, groupId).groups);
             setColumns(prev => prev.filter(c => c.id !== groupId));
-
-            // 그룹 내 카드들: 상대 좌표 → 절대 좌표로 변환 후 자유 배치
-            const groupCards = tasks.filter(t => t.column_id === groupId);
-            const cardUpdates = groupCards.map(t => ({
-                id: t.id,
-                x: (g.x ?? 0) + (t.x ?? 0),
-                y: (g.y ?? 0) + (t.y ?? 0),
-                column_id: null as number | null,
-            }));
-
-            setTasks(prev => prev.map(t => {
-                if (t.column_id !== groupId) return t;
-                const update = cardUpdates.find(u => u.id === t.id);
-                return update
-                    ? { ...t, column_id: undefined, x: update.x, y: update.y }
-                    : { ...t, column_id: undefined };
-            }));
-
-            // 서버에 새 절대 좌표 동기화
-            if (cardUpdates.length > 0) {
-                batchUpdateCardPositions(cardUpdates).catch(() => {});
-            }
-        } catch {
-            alert('그룹 삭제에 실패했습니다.');
+            setTasks(prev => removeBoardGroup(prev, [g], groupId).tasks);
+        } finally {
+            deletingGroups.current.delete(groupId);
         }
-    }, [groups, tasks]);
+    }, [groups]);
 
     // =========================================
     // 기타 핸들러
@@ -651,7 +657,16 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
         setSelectedTask(prev => prev ? { ...prev, ...updates } : null);
     }, [selectedTask, handleTaskUpdate]);
     const handleToggleGrid = useCallback(() => setSnapToGrid(prev => !prev), []);
-    const handleToggleTheme = useCallback(() => document.documentElement.classList.toggle('dark'), []);
+    const handleToggleTheme = useCallback(() => {
+        try { toggleTheme(); }
+        catch { alert('브라우저 저장소가 차단되어 테마를 저장하지 못했습니다.'); }
+    }, []);
+
+    // 로딩 조기 반환보다 위에서 훅을 호출합니다. 보드 데이터가 바뀔 때만 필터를 다시 계산합니다.
+    const filteredTasks = useMemo(() => selectBoardTasks(tasks, activeBoardId, project.id), [tasks, activeBoardId, project.id]);
+    const moneyContext = useMemo(() => ({ tasks, results: calculateMoney(tasks, connections) }), [tasks, connections]);
+    const filteredConnections = useMemo(() => connections.filter(c => c.boardId === activeBoardId || c.boardId === project.id || activeBoardId === 1), [connections, activeBoardId, project.id]);
+    const filteredGroups = useMemo(() => groups.filter(g => g.projectId === activeBoardId || g.projectId === project.id || activeBoardId === 1), [groups, activeBoardId, project.id]);
 
     // =========================================
     // 렌더링: 로딩/에러
@@ -684,17 +699,19 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
     // =========================================
     // 필터링된 데이터
     // =========================================
-    const filteredTasks = tasks
-        .filter(t => t.boardId === activeBoardId || t.boardId === project.id || activeBoardId === 1)
-        .filter((t, i, s) => i === s.findIndex(x => x.id === t.id));
-    const filteredConnections = connections.filter(c => c.boardId === activeBoardId || c.boardId === project.id || activeBoardId === 1);
-    const filteredGroups = groups.filter(g => g.projectId === activeBoardId || g.projectId === project.id || activeBoardId === 1);
 
     // =========================================
     // 메인 렌더링
     // =========================================
     return (
-        <div className="flex h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100 font-sans overflow-hidden">
+        <MoneyContext.Provider value={moneyContext}>
+        <div className="flex h-screen bg-gray-50 dark:bg-[var(--app-dark)] text-gray-900 dark:text-gray-100 font-sans overflow-hidden">
+            {pendingGroupDelete !== null && <DeleteConfirmation
+                title="그룹 삭제"
+                description={`‘${groups.find(group => group.id === pendingGroupDelete)?.title ?? '선택한 그룹'}’ 그룹만 삭제합니다. 카드와 연결선은 유지하고 카드는 보드의 같은 위치에 남깁니다.`}
+                onCancel={() => setPendingGroupDelete(null)}
+                onConfirm={() => handleGroupDelete(pendingGroupDelete)}
+            />}
             {/* Background */}
             <div className="absolute inset-0 pointer-events-none z-0">
                 <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-blue-400/5 dark:bg-blue-900/10 rounded-full blur-[120px]" />
@@ -740,6 +757,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                             { mode: 'board', icon: LayoutGrid, label: 'Board' },
                             { mode: 'calendar', icon: CalendarIcon, label: 'Calendar' },
                             { mode: 'timeline', icon: StretchHorizontal, label: 'Timeline' },
+                            { mode: 'money', icon: LayoutGrid, label: '금액표' },
                             { mode: 'chat', icon: MessageCircle, label: 'Chat' },
                             { mode: 'community', icon: MessageSquare, label: 'Community' },
                         ] as const).map(({ mode, icon: Icon, label }) => (
@@ -764,8 +782,9 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
             {/* Main Content */}
             <div className="flex-1 flex flex-col h-full relative overflow-hidden z-10 p-4">
                 <div className="bg-white/40 dark:bg-black/40 backdrop-blur-3xl rounded-[2rem] border border-white/20 dark:border-white/5 shadow-inner h-full overflow-hidden relative">
-                    {/* Status Indicators */}
-                    <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+                    {/* 상단 테마/스냅 버튼을 가리지 않도록 상태 배지는 왼쪽 아래에 둡니다.
+                        안내 배지는 포인터를 통과시키고 재연결 버튼만 클릭을 받습니다. */}
+                    <div className="absolute bottom-4 left-4 z-50 flex items-center gap-2 pointer-events-none">
                         {connectionState === 'connected' && (
                             <div className="flex items-center gap-1.5 bg-green-500/10 text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full text-xs font-medium">
                                 <Wifi className="w-3.5 h-3.5" /><span>실시간</span>
@@ -781,9 +800,10 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>재연결 중 ({reconnectAttempts})</span>
                             </div>
                         )}
-                        {connectionState === 'disconnected' && !isLoading && (
+                        {API_CONFIG.USE_MOCK && <span className="bg-blue-500/10 text-blue-600 px-2.5 py-1 rounded-full text-xs">로컬 데모 · 브라우저 저장</span>}
+                        {!API_CONFIG.USE_MOCK && connectionState === 'disconnected' && !isLoading && (
                             <button onClick={reconnectSocket} title={socketError || '연결 끊김'}
-                                    className="flex items-center gap-1.5 bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-red-500/20">
+                                    className="pointer-events-auto flex items-center gap-1.5 bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-red-500/20">
                                 <WifiOff className="w-3.5 h-3.5" /><span>오프라인</span>
                             </button>
                         )}
@@ -800,8 +820,13 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                             boards={boards} activeBoardId={activeBoardId}
                             onSwitchBoard={handleSwitchBoard} onAddBoard={handleAddBoard} onRenameBoard={handleRenameBoard}
                             snapToGrid={snapToGrid} groups={filteredGroups}
-                            onGroupsUpdate={handleGroupsUpdate} onGroupMove={handleGroupMove} onGroupDelete={handleGroupDelete}
+                            onGroupsUpdate={handleGroupsUpdate} onGroupMove={handleGroupMove} onGroupDelete={async id => setPendingGroupDelete(id)}
                             onToggleGrid={handleToggleGrid} onToggleTheme={handleToggleTheme}
+                            onArrange={API_CONFIG.USE_MOCK ? async width => {
+                                const arranged = arrangeMockBoard(project.id, width);
+                                setTasks(arranged.tasks);
+                                setGroups(arranged.groups);
+                            } : undefined}
                             onFileDropOnCard={handleFileDropOnCard} onNativeFileDrop={handleNativeFileDrop}
                             onBackgroundFileDrop={handleBackgroundFileDrop}
                             remoteCursors={remoteCursors}
@@ -813,6 +838,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                     {viewMode === 'chat' && <ChatView projectId={project.id} currentUserId={user?.id ?? 0} currentUserName={user?.name ?? 'User'} projectName={project.name} />}
                     {viewMode === 'community' && <CommunityBoard projectId={project.id} viewType="table" refreshKey={postRefreshKey} />}
                     {viewMode === 'settings' && <SettingsView />}
+                    {viewMode === 'money' && <MoneyView onTaskSelect={handleTaskSelect} />}
                 </div>
             </div>
 
@@ -848,6 +874,7 @@ export const BoardScreen: React.FC<BoardScreenProps> = ({ project, onBack }) => 
                 />
             )}
         </div>
+        </MoneyContext.Provider>
     );
 };
 

@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/community/PostWriter.tsx
+ * 게시글 제목·본문·이미지 입력을 모아 저장 콜백을 호출하는 작성/편집 폼입니다.
+ * 파일 미리보기와 서버 업로드 완료는 별개입니다. 전역 커뮤니티 이미지와 프로젝트 글의 지원 범위 차이를 확인하세요.
+ */
+
 import React, { useState } from 'react';
 import { createProjectPost, createCommunityPost } from '@/src/models/api';
 import { ArrowLeft, Loader2, Send, Image, X } from 'lucide-react';

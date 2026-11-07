@@ -1,4 +1,10 @@
 /**
+ * [파일 안내] frontend/src/models/utils/groupLayout.ts
+ * 카드 수/배치로 그룹 크기를 구하고 카드 추가·제거·그룹 생성 이후 레이아웃을 계산하는 순수 함수 모음입니다.
+ * 입력 스냅샷에서 새 좌표/크기를 계산하며 저장은 호출자가 수행합니다. 상대/절대 위치 결과 타입을 혼동하지 마세요.
+ */
+
+/**
  * Group Layout Utilities
  *
  * 그룹 레이아웃 계산의 단일 진실 공급원 (Single Source of Truth)

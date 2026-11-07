@@ -1,8 +1,18 @@
+/**
+ * [파일 안내] frontend/src/app/globals.css
+ * 앱 전체의 색상 토큰·테마·공통 배경/효과·애니메이션을 정의합니다.
+ * 컴포넌트의 Tailwind 클래스와 함께 적용되므로 전역 선택자 변경은 여러 화면에 영향을 줍니다. CSS 변수와 dark 상태의 우선순위를 확인하세요.
+ */
+
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  --surface-panel: #1e212b;
+  --surface-raised: #2c333a;
+  --canvas-dark: #0a0a0f;
+  --app-dark: #0f111a;
   /* Apple-style Light Mode */
   --bg-primary: #f5f5f7;
   --bg-secondary: rgba(255, 255, 255, 0.65);
@@ -253,4 +263,154 @@ input:focus, textarea:focus {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.4);
+}
+
+/* 컬러 테마: 배경만 강하게 물들이지 않고 표면·글자·강조색을 함께 정의합니다.
+   모두 light 색상 체계를 사용하여 파스텔 카드 위에 흰 글자가 올라가는 문제를 피합니다.
+   Tailwind의 중립/강조 토큰을 연결하므로 기존 화면의 텍스트·선택 상태도 같은 색을 사용합니다. */
+:root[data-theme="purple"] {
+  --theme-canvas: #eee6fa;
+  --theme-surface: #fcfaff;
+  --theme-soft: #e8dcf6;
+  --theme-border: #b7a2ce;
+  --theme-ink: #2f2045;
+  --theme-muted: #625073;
+  --theme-accent: #632eb0;
+  --theme-accent-hover: #51218f;
+}
+:root[data-theme="yellow"] {
+  --theme-canvas: #fff4cd;
+  --theme-surface: #fffdf5;
+  --theme-soft: #f4e5b4;
+  --theme-border: #b7a36b;
+  --theme-ink: #352b16;
+  --theme-muted: #685735;
+  /* 노란 버튼 위 흰 글씨 대신 짙은 황갈색을 사용합니다. */
+  --theme-accent: #795000;
+  --theme-accent-hover: #634000;
+}
+:root[data-theme="red"] {
+  --theme-canvas: #fbe5e8;
+  --theme-surface: #fffafb;
+  --theme-soft: #f3d6dd;
+  --theme-border: #c09aa5;
+  --theme-ink: #42232d;
+  --theme-muted: #77505c;
+  --theme-accent: #a32643;
+  --theme-accent-hover: #841c35;
+}
+:root:is([data-theme="purple"], [data-theme="yellow"], [data-theme="red"]) {
+  --bg-primary: var(--theme-canvas);
+  --bg-secondary: var(--theme-surface);
+  --bg-tertiary: var(--theme-surface);
+  --glass-border: var(--theme-border);
+  --text-primary: var(--theme-ink);
+  --text-secondary: var(--theme-muted);
+  --text-tertiary: var(--theme-muted);
+  --accent: var(--theme-accent);
+  --accent-glow: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  --color-gray-50: var(--theme-canvas);
+  --color-gray-100: var(--theme-soft);
+  --color-gray-200: var(--theme-soft);
+  --color-gray-300: var(--theme-border);
+  --color-gray-400: var(--theme-muted);
+  --color-gray-500: var(--theme-muted);
+  --color-gray-600: var(--theme-muted);
+  --color-gray-700: var(--theme-ink);
+  --color-gray-800: var(--theme-ink);
+  --color-gray-900: var(--theme-ink);
+  --color-blue-50: var(--theme-soft);
+  --color-blue-100: var(--theme-soft);
+  --color-blue-200: var(--theme-border);
+  --color-blue-400: var(--theme-accent);
+  --color-blue-500: var(--theme-accent);
+  --color-blue-600: var(--theme-accent);
+  --color-blue-700: var(--theme-accent-hover);
+}
+
+/* 테마 선택은 CSS 변수 갱신으로 처리합니다. 카드별 JS 스타일 재계산이 필요 없습니다.
+   불투명한 컬러 테마 표면에는 비싼 backdrop blur를 중복 적용하지 않습니다. */
+:root:is([data-theme="purple"], [data-theme="yellow"], [data-theme="red"]) :is(.glass-panel, .glass-card, .theme-surface) {
+  background-color: var(--theme-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+:root:is([data-theme="purple"], [data-theme="yellow"], [data-theme="red"]) :is(input, textarea, select) {
+  accent-color: var(--theme-accent);
+}
+:root:is([data-theme="purple"], [data-theme="yellow"], [data-theme="red"]) :is(input, textarea):focus {
+  background-color: var(--theme-surface);
+  color: var(--theme-ink);
+}
+
+/* 밝기와 색은 독립적입니다. dark 조합은 진한 색의 표면과 밝은 본문을 함께 정의합니다. */
+:root.dark[data-theme="purple"] {
+  --theme-canvas: #20162e;
+  --theme-surface: #2c213d;
+  --theme-soft: #3b2c50;
+  --theme-border: #806797;
+  --theme-ink: #f5edff;
+  --theme-muted: #d3c0e5;
+  --theme-accent: #c4a3ff;
+  --theme-accent-hover: #d8bdff;
+  --theme-button: #7241b5;
+}
+:root.dark[data-theme="yellow"] {
+  --theme-canvas: #272115;
+  --theme-surface: #332c1c;
+  --theme-soft: #463b25;
+  --theme-border: #93815a;
+  --theme-ink: #fff5da;
+  --theme-muted: #decea4;
+  --theme-accent: #f3cd76;
+  --theme-accent-hover: #ffe0a0;
+  --theme-button: #795000;
+}
+:root.dark[data-theme="red"] {
+  --theme-canvas: #2b171e;
+  --theme-surface: #3a232c;
+  --theme-soft: #4c303c;
+  --theme-border: #a27485;
+  --theme-ink: #fff0f4;
+  --theme-muted: #ebbfcd;
+  --theme-accent: #ffacc5;
+  --theme-accent-hover: #ffc6d7;
+  --theme-button: #a32643;
+}
+:root.dark:is([data-theme="purple"], [data-theme="yellow"], [data-theme="red"]) {
+  --surface-panel: var(--theme-surface);
+  --surface-raised: var(--theme-soft);
+  --canvas-dark: var(--theme-canvas);
+  --app-dark: var(--theme-canvas);
+  /* dark:text-gray-100과 dark:bg-gray-800의 의미를 밝은 테마와 반대로 매핑합니다. */
+  --color-gray-50: var(--theme-ink);
+  --color-gray-100: var(--theme-ink);
+  --color-gray-200: var(--theme-ink);
+  --color-gray-300: var(--theme-muted);
+  --color-gray-400: var(--theme-muted);
+  --color-gray-500: var(--theme-muted);
+  --color-gray-600: var(--theme-border);
+  --color-gray-700: var(--theme-soft);
+  --color-gray-800: var(--theme-surface);
+  --color-gray-900: var(--theme-canvas);
+  --color-blue-500: var(--theme-button);
+  --color-blue-600: var(--theme-button);
+  --color-blue-700: var(--theme-button);
+}
+/* 밝은 스티키 카드는 앱의 dark 토큰을 상속하지 않습니다. 카드 내용의 대비를 유지합니다. */
+.dark [data-card-variant="sticky"] {
+  --color-gray-800: #1f2937;
+}
+:root.dark:is([data-theme="purple"], [data-theme="yellow"], [data-theme="red"]) :is(.text-blue-500, .text-blue-600) {
+  color: var(--theme-accent);
+}
+
+:root:is([data-theme="purple"], [data-theme="yellow"], [data-theme="red"]) [data-card-variant="sticky"] {
+  /* 특히 노란 배경의 노란 카드가 섞이지 않게 카드 글자색을 기준으로 윤곽을 보강합니다. */
+  border-color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-bg-blob, .animate-blob, .animate-float, .animate-pulse-glow { animation: none; }
+  .btn-primary, .glass-card, .glass-panel { transition: none; }
 }

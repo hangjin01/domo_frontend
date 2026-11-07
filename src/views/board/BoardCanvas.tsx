@@ -1,8 +1,22 @@
+/**
+ * [파일 안내] frontend/src/views/board/BoardCanvas.tsx
+ * 무한 캔버스의 선택·드래그·그룹화·연결선·확대/이동 및 키보드 조작을 묶는 핵심 UI입니다.
+ * 입력은 tasks/groups/connections와 부모 콜백입니다. 포인터 상태는 ref/state에, 저장 대기 변경은 usePendingSync에 맡깁니다.
+ * 화면 픽셀, 캔버스 좌표, 부모 그룹 기준 상대좌표를 구분해야 합니다. 다른 좌표계의 값을 바로 더하면 중첩 그룹에서 위치가 틀어집니다.
+ * 드래그는 미리보기를 즉시 갱신하고 종료 시 저장합니다. 실패 시 복원할 스냅샷과 임시 ID→저장 ID 매핑을 함께 살펴보세요.
+ * 렌더링 중 API를 호출하지 않으며 이벤트/effect에서 처리합니다. 파일 드롭·삭제·배치 위치 변경은 외부 상태를 바꾸므로 콜백의 실패 경로도 확인해야 합니다.
+ */
+
 'use client';
 
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import { clampZoom, zoomScroll, fitZoom } from '@/src/models/utils/boardZoom';
+import { indexBoardTasks } from '@/src/models/utils/boardIndex';
+import { getBoardMenuTarget, resolveBoardMenuTarget } from '@/src/models/utils/boardMenu';
+import { DeleteConfirmation } from '@/src/views/common/DeleteConfirmation';
 import { Task, Connection, Board, Group, Column } from '@/src/models/types';
 import { TaskCard } from '@/src/views/task/TaskCard';
+import { cardSize, groupGrid, fitGroup } from '@/src/models/utils/cardLayout';
 import { SortableGroup, DropPlaceholder, SortableCard } from '@/src/views/board/SortableGroup';
 import { SyncStatusIndicator, SyncErrorToast } from '@/src/views/board/SyncStatusIndicator';
 import { useSortableGrid } from '@/src/containers/hooks/board/useSortableGrid';
@@ -35,7 +49,7 @@ import {
     calculateGroupLayout,
 } from '@/src/models/utils/groupLayout';
 import {
-    Plus, LayoutDashboard, ChevronDown, Check, Pencil, X, MousePointer2, Layers, Spline, Activity, Trash2, FilePlus, Clipboard,
+    Plus, LayoutDashboard, ChevronDown, Check, Pencil, X, MousePointer2, Layers, Spline, Trash2, FilePlus, Clipboard,
     Grid, Sun, Moon, Loader2
 } from 'lucide-react';
 
@@ -102,6 +116,7 @@ interface BoardCanvasProps {
     onGroupDelete?: (groupId: number) => Promise<void>;
     onToggleGrid: () => void;
     onToggleTheme: () => void;
+    onArrange?: (width: number) => Promise<void>;
     // 파일 드롭 관련
     onFileDropOnCard?: (cardId: number, fileId: number) => Promise<void>;
     onNativeFileDrop?: (cardId: number, files: File[]) => Promise<void>;
@@ -118,9 +133,69 @@ const COLUMN_GAP = 30;
 const COLUMN_START_X = 50;
 
 export const BoardCanvas: React.FC<BoardCanvasProps> = ({
-                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onFileDropOnCard, onNativeFileDrop, onBackgroundFileDrop, resolveColumnId, remoteCursors, onCursorMove
+                                                            tasks, connections, columns, onTasksUpdate, onTaskSelect, onTaskCreate, onTaskUpdate, onTaskDelete, onMoveTaskToColumn, onConnectionCreate, onConnectionDelete, onConnectionUpdate, boards, activeBoardId, onSwitchBoard, onAddBoard, onRenameBoard, snapToGrid, groups: storedGroups, onGroupsUpdate, onGroupMove, onGroupDelete, onToggleGrid, onToggleTheme, onArrange, onFileDropOnCard, onNativeFileDrop, onBackgroundFileDrop, resolveColumnId, remoteCursors, onCursorMove
                                                         }) => {
+    const groups = useMemo(() => storedGroups.map(g => fitGroup(g, tasks)), [storedGroups, tasks]);
     const containerRef = useRef<HTMLDivElement>(null);
+    const planeRef = useRef<HTMLDivElement>(null);
+    const [zoom, setZoom] = useState(1);
+    const zoomRef = useRef(1);
+    const [origin, setOrigin] = useState({ x: 0, y: 0 });
+    const pendingScroll = useRef<{ left: number; top: number } | null>(null);
+    const pointerHeld = useRef(false);
+    // 화면 좌표에서 배율과 보드 원점을 제거하여 저장 좌표로 변환합니다.
+    const worldPoint = useCallback((x: number, y: number) => {
+        const rect = planeRef.current!.getBoundingClientRect();
+        return { x: (x - rect.left) / zoomRef.current, y: (y - rect.top) / zoomRef.current };
+    }, []);
+    const changeZoom = useCallback((value: number, x?: number, y?: number) => {
+        const el = containerRef.current;
+        if (!el || pointerHeld.current) return;
+        const next = clampZoom(value);
+        const px = x ?? el.clientWidth / 2, py = y ?? el.clientHeight / 2;
+        pendingScroll.current = { left: zoomScroll(el.scrollLeft, px, zoomRef.current, next), top: zoomScroll(el.scrollTop, py, zoomRef.current, next) };
+        zoomRef.current = next;
+        setZoom(next);
+    }, []);
+    useLayoutEffect(() => {
+        if (pendingScroll.current && containerRef.current) {
+            containerRef.current.scrollTo(pendingScroll.current);
+            pendingScroll.current = null;
+        }
+    }, [zoom, origin]);
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const wheel = (e: WheelEvent) => {
+            if (!e.ctrlKey && !e.metaKey) return;
+            e.preventDefault();
+            const rect = el.getBoundingClientRect();
+            const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1);
+            changeZoom(zoomRef.current * Math.exp(-delta * 0.002), e.clientX - rect.left, e.clientY - rect.top);
+        };
+        const release = () => { pointerHeld.current = false; };
+        el.addEventListener('wheel', wheel, { passive: false });
+        // 크기 조절 핸들이 버블링을 막아도 포인터 종료는 반드시 감지합니다.
+        window.addEventListener('pointerup', release, true);
+        window.addEventListener('pointercancel', release, true);
+        window.addEventListener('blur', release);
+        return () => { el.removeEventListener('wheel', wheel); window.removeEventListener('pointerup', release, true); window.removeEventListener('pointercancel', release, true); window.removeEventListener('blur', release); };
+    }, [changeZoom]);
+    const boardBounds = useMemo(() => {
+        const items = [...groups.map(g => ({ x: g.x, y: g.y, width: g.width, height: g.collapsed ? 50 : g.height })),
+            ...tasks.filter(t => !groups.some(g => g.id === t.column_id)).map(t => ({ x: t.x ?? 0, y: t.y ?? 0, ...cardSize(t) }))];
+        return { left: Math.min(0, ...items.map(i => i.x)), top: Math.min(0, ...items.map(i => i.y)),
+            right: Math.max(1, ...items.map(i => i.x + i.width)), bottom: Math.max(1, ...items.map(i => i.y + i.height)) };
+    }, [groups, tasks]);
+    const fitBoard = () => {
+        const el = containerRef.current;
+        if (!el || pointerHeld.current) return;
+        const next = fitZoom(boardBounds.right - boardBounds.left, boardBounds.bottom - boardBounds.top, el.clientWidth, el.clientHeight);
+        setOrigin({ x: -boardBounds.left + 32 / next, y: -boardBounds.top + 32 / next });
+        pendingScroll.current = { left: 0, top: 0 };
+        zoomRef.current = next;
+        setZoom(next);
+    };
     const boardSelectorRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const taskFileInputRef = useRef<HTMLInputElement>(null);
@@ -174,7 +249,17 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     } | null>(null);
 
     const [activeMenu, setActiveMenu] = useState<{ id: number, x: number, y: number } | null>(null);
-    const [backgroundMenu, setBackgroundMenu] = useState<{ x: number, y: number, taskX: number, taskY: number, targetTaskId?: number } | null>(null);
+    const [savingConnection, setSavingConnection] = useState(false);
+    const [connectionError, setConnectionError] = useState('');
+    const saveConnectionChange = async (updates: Partial<Connection>) => {
+        if (!activeMenu || savingConnection) return;
+        setSavingConnection(true);
+        setConnectionError('');
+        try { await onConnectionUpdate(activeMenu.id, updates); setActiveMenu(null); }
+        catch { setConnectionError('선 종류를 저장하지 못했습니다. 다시 시도해 주세요.'); }
+        finally { setSavingConnection(false); }
+    };
+    const [backgroundMenu, setBackgroundMenu] = useState<{ x: number, y: number, taskX: number, taskY: number, targetTaskId?: number, targetGroupId?: number } | null>(null);
     const [selectionBox, setSelectionBox] = useState<{ startX: number, startY: number, currX: number, currY: number } | null>(null);
     const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
     const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
@@ -186,7 +271,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const [editBoardName, setEditBoardName] = useState('');
 
     const [isCreatingTask, setIsCreatingTask] = useState(false);
+    const [arranging, setArranging] = useState(false);
+    const [arrangeMessage, setArrangeMessage] = useState('');
     const [isDeletingTask, setIsDeletingTask] = useState(false);
+    const [pendingTaskDelete, setPendingTaskDelete] = useState<number | null>(null);
+    // React state가 pointerup에서 초기화돼도 contextmenu가 뒤늦게 올 수 있습니다.
+    // 캡처 단계에서 기록해 그룹 내부 카드의 stopPropagation에도 영향을 받지 않습니다.
+    const rightClickStart = useRef<ReturnType<typeof getBoardMenuTarget> | null>(null);
+    const rightClickPanned = useRef(false);
 
     // 우클릭 팬 상태
     const [panState, setPanState] = useState<{
@@ -195,6 +287,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         scrollStartX: number;
         scrollStartY: number;
         hasMoved: boolean;
+        target: ReturnType<typeof getBoardMenuTarget>;
     } | null>(null);
 
     // 호버된 연결선 끝점 (드래그 가능 표시)
@@ -507,14 +600,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         scrollTop: number,
         handle: 'left' | 'right' | undefined
     ) => {
-        const offsetX = -containerRect.left + scrollLeft;
-        const offsetY = -containerRect.top + scrollTop;
+        const plane = planeRef.current!.getBoundingClientRect();
+        const offsetX = -plane.left;
+        const offsetY = -plane.top;
 
         if (handle === 'left') {
-            return { x: rect.left + offsetX, y: rect.top + rect.height / 2 + offsetY };
+            return { x: (rect.left + offsetX) / zoomRef.current, y: (rect.top + rect.height / 2 + offsetY) / zoomRef.current };
         }
         // 'right' 또는 기본값
-        return { x: rect.right + offsetX, y: rect.top + rect.height / 2 + offsetY };
+        return { x: (rect.right + offsetX) / zoomRef.current, y: (rect.top + rect.height / 2 + offsetY) / zoomRef.current };
     }, []);
 
     // 화살표 SVG 경로 계산 (targetHandle 방향에 따라)
@@ -565,7 +659,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         const container = containerRef.current;
         const containerRect = container.getBoundingClientRect();
         const newLines: React.ReactElement[] = [];
-        setSvgSize({ width: container.scrollWidth, height: container.scrollHeight });
+        setSvgSize({ width: Math.max(2000, boardBounds.right + 400), height: Math.max(2000, boardBounds.bottom + 400) });
 
         connections.forEach((conn) => {
             // 재연결 드래그 중인 연결선은 별도 처리
@@ -632,11 +726,16 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     : getBezierPath(startX, startY, endX, endY, sourceHandle, targetHandle);
 
                 const isSelected = activeMenu?.id === conn.id;
-                const arrowPath = getArrowPath(endX, endY, targetHandle);
-                const isHovered = hoveredEndpoint?.connectionId === conn.id;
+                const lineColor = isSelected || hoveredEndpoint?.connectionId === conn.id ? '#3b82f6' : '#808080';
 
                 newLines.push(
                     <g key={conn.id}>
+                        <defs>
+                            {/* auto는 직선의 기울기 및 곡선의 마지막 접선 방향을 모두 반영합니다. */}
+                            <marker id={`connection-arrow-${conn.id}`} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto">
+                                <path d="M 0 0 L 10 5 L 0 10 Z" fill={lineColor} />
+                            </marker>
+                        </defs>
                         {/* 투명한 넓은 히트 영역 - 드래그 및 컨텍스트 메뉴용 */}
                         <path
                             d={pathString}
@@ -664,6 +763,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             onPointerLeave={() => setHoveredEndpoint(null)}
                             onPointerDown={(evt) => {
                                 evt.stopPropagation();
+                                if (evt.button !== 0) return;
                                 setHoveredEndpoint(null);
 
                                 // 마우스 위치와 가까운 끝점 계산
@@ -685,14 +785,16 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             onDoubleClick={(evt) => {
                                 evt.stopPropagation();
                                 const rect = container.getBoundingClientRect();
-                                setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop });
+                                setConnectionError('');
+                                setActiveMenu({ id: conn.id, ...worldPoint(Math.max(rect.left + 8, Math.min(evt.clientX, rect.right - 232 * zoomRef.current)), Math.max(rect.top + 8, Math.min(evt.clientY, rect.bottom - 290 * zoomRef.current))) });
                                 setBackgroundMenu(null);
                             }}
                             onContextMenu={(evt) => {
                                 evt.preventDefault();
                                 evt.stopPropagation();
                                 const rect = container.getBoundingClientRect();
-                                setActiveMenu({ id: conn.id, x: evt.clientX - rect.left + container.scrollLeft, y: evt.clientY - rect.top + container.scrollTop });
+                                setConnectionError('');
+                                setActiveMenu({ id: conn.id, ...worldPoint(Math.max(rect.left + 8, Math.min(evt.clientX, rect.right - 232 * zoomRef.current)), Math.max(rect.top + 8, Math.min(evt.clientY, rect.bottom - 290 * zoomRef.current))) });
                                 setBackgroundMenu(null);
                             }}
                         />
@@ -700,10 +802,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         <path
                             d={pathString}
                             fill="none"
-                            stroke={isSelected || isHovered ? "#3b82f6" : "rgba(128,128,128,0.4)"}
+                            stroke={lineColor}
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeDasharray={conn.style === 'dashed' ? "8,4" : "none"}
+                            markerEnd={conn.style === 'arrow' ? `url(#connection-arrow-${conn.id})` : undefined}
                             className="pointer-events-none transition-colors duration-150"
                         />
 
@@ -716,12 +819,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             className="pointer-events-none"
                         />
 
-                        {/* Target 화살표 */}
-                        <path
-                            d={arrowPath}
-                            fill={isSelected || isHovered ? "#3b82f6" : "rgba(128,128,128,0.5)"}
-                            className="pointer-events-none transition-colors duration-150"
-                        />
+                        {/* 실선·점선에는 화살촉을 붙이지 않고 화살표선에만 markerEnd를 표시합니다. */}
                     </g>
                 );
             }
@@ -746,7 +844,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
 
         setLines(newLines);
-    }, [connections, connectionDraft, connectionReconnect, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath, hoveredEndpoint]);
+    }, [connections, connectionDraft, connectionReconnect, activeMenu, getConnectionPoint, getArrowPath, getBezierPath, getStraightPath, hoveredEndpoint, boardBounds.right, boardBounds.bottom, worldPoint]);
 
     useLayoutEffect(() => {
         updateConnections();
@@ -998,16 +1096,12 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const handleDeleteTask = async (taskId: number) => {
         if (isDeletingTask) return;
         setIsDeletingTask(true);
-        const previousTasks = [...tasks];
-        onTasksUpdate(tasks.filter(t => t.id !== taskId));
-        connections.filter(c => c.from === taskId || c.to === taskId).forEach(c => onConnectionDelete(c.id));
         try {
             if (onTaskDelete) await onTaskDelete(taskId);
-            else await deleteTask(taskId);
-        } catch (err) {
-
-            onTasksUpdate(previousTasks);
-            alert('카드 삭제에 실패했습니다.');
+            else {
+                await deleteTask(taskId);
+                onTasksUpdate(tasks.filter(t => t.id !== taskId));
+            }
         } finally {
             setIsDeletingTask(false);
             setBackgroundMenu(null);
@@ -1045,14 +1139,12 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         // [Race Condition Guard] 카드 Lock
         lockEntity(taskId);
 
-        startDrag(taskId, pendingCardDrag.startX, pendingCardDrag.startY, cardRect);
+        const scale = zoomRef.current;
+        startDrag(taskId, pendingCardDrag.startX / scale, pendingCardDrag.startY / scale, new DOMRect(cardRect.x / scale, cardRect.y / scale, cardRect.width / scale, cardRect.height / scale));
 
         const container = containerRef.current;
         const rect = container.getBoundingClientRect();
-        setSortableDragPos({
-            x: clientX - rect.left + container.scrollLeft - (clientX - cardRect.left),
-            y: clientY - rect.top + container.scrollTop - (clientY - cardRect.top),
-        });
+        setSortableDragPos(worldPoint(cardRect.left, cardRect.top));
 
         setPendingCardDrag(null);
     }, [pendingCardDrag, startDrag, lockEntity]);
@@ -1062,8 +1154,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (!containerRef.current) return;
         const container = containerRef.current;
         const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left + container.scrollLeft;
-        const y = e.clientY - rect.top + container.scrollTop;
+        const { x, y } = worldPoint(e.clientX, e.clientY);
 
         // 우클릭 팬 시작
         if (e.button === 2) {
@@ -1074,7 +1165,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 startY: e.clientY,
                 scrollStartX: container.scrollLeft,
                 scrollStartY: container.scrollTop,
-                hasMoved: false
+                hasMoved: false,
+                target: getBoardMenuTarget(e.target as Element)
             });
             setActiveMenu(null);
             setBackgroundMenu(null);
@@ -1163,8 +1255,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (!containerRef.current) return;
         const container = containerRef.current;
         const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left + container.scrollLeft;
-        const y = e.clientY - rect.top + container.scrollTop;
+        const { x, y } = worldPoint(e.clientX, e.clientY);
         setConnectionDraft({ fromId: taskId, startX: x, startY: y, currX: x, currY: y, sourceHandle: handle });
         setActiveMenu(null);
         setBackgroundMenu(null);
@@ -1227,7 +1318,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     };
 
     // 연결선 재연결 드래그 종료 처리 (Optimistic: await 없음)
-    const handleConnectionReconnectEnd = (targetCardId: number, targetHandle: 'left' | 'right') => {
+    const handleConnectionReconnectEnd = async (targetCardId: number, targetHandle: 'left' | 'right') => {
         if (!connectionReconnect) return;
 
         // 같은 카드에 재연결하는 것은 무시 (자기 자신에게 연결 불가)
@@ -1243,21 +1334,23 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         }
 
         // Optimistic: 비동기 대기 없이 호출 (상위 컴포넌트에서 상태 관리)
-        if (connectionReconnect.draggingEnd === 'source') {
+        try { if (connectionReconnect.draggingEnd === 'source') {
             // source를 새 카드로 변경
-            onConnectionUpdate(connectionReconnect.connectionId, {
+            await onConnectionUpdate(connectionReconnect.connectionId, {
                 from: targetCardId,
                 sourceHandle: targetHandle,
             });
         } else {
             // target을 새 카드로 변경
-            onConnectionUpdate(connectionReconnect.connectionId, {
+            await onConnectionUpdate(connectionReconnect.connectionId, {
                 to: targetCardId,
                 targetHandle: targetHandle,
             });
+        } } catch {
+            window.alert('연결 변경을 저장하지 못했습니다. 다시 시도해 주세요.');
+        } finally {
+            setConnectionReconnect(null);
         }
-
-        setConnectionReconnect(null);
     };
 
     // 연결선 재연결 드래그 취소 (허공에 드롭)
@@ -1272,8 +1365,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         if (!containerRef.current) return;
         const container = containerRef.current;
         const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left + container.scrollLeft;
-        const y = e.clientY - rect.top + container.scrollTop;
+        const { x, y } = worldPoint(e.clientX, e.clientY);
         mousePosRef.current = { x, y };
 
         // 라이브 커서 전송 (50ms throttle)
@@ -1317,7 +1409,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
         // SortableGrid 드래그 중
         if (dragContext) {
-            const newPos = updateDrag(e.clientX, e.clientY, container.scrollLeft - rect.left, container.scrollTop - rect.top);
+            const newPos = updateDrag(e.clientX / zoomRef.current, e.clientY / zoomRef.current, -planeRef.current!.getBoundingClientRect().left / zoomRef.current, -planeRef.current!.getBoundingClientRect().top / zoomRef.current);
             setSortableDragPos(newPos);
             return;
         }
@@ -1335,8 +1427,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 if (pos.taskId === -1 || pos.isPlaceholder) return; // 플레이스홀더 제외
                 const tx = pos.x;
                 const ty = pos.y;
-                if (tx < boxEndX && tx + gridConfig.cardWidth > boxStartX &&
-                    ty < boxEndY && ty + gridConfig.cardHeight > boxStartY) {
+                const size = cardSize(tasksRef.current.find(t => t.id === pos.taskId) ?? {});
+                if (tx < boxEndX && tx + size.width > boxStartX &&
+                    ty < boxEndY && ty + size.height > boxStartY) {
                     newSelectedIds.add(pos.taskId);
                 }
             });
@@ -1347,8 +1440,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             // 카드는 그룹 내 상대 좌표를 저장하므로 그룹만 이동하면 됨
             // 카드의 x, y는 그룹 기준 offset이므로 업데이트 불필요
             // =========================================
-            const deltaX = e.clientX - groupDragState.startX;
-            const deltaY = e.clientY - groupDragState.startY;
+            const deltaX = (e.clientX - groupDragState.startX) / zoomRef.current;
+            const deltaY = (e.clientY - groupDragState.startY) / zoomRef.current;
             let newGroupX = groupDragState.initialGroupX + deltaX;
             let newGroupY = groupDragState.initialGroupY + deltaY;
             if (snapToGrid) {
@@ -1376,8 +1469,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             // 카드의 x, y는 그룹 내 상대 좌표이므로 그룹이 이동해도 변경하지 않음
             // 렌더링 시 group.x + card.x로 절대 좌표 계산
         } else if (freeDragState) {
-            const deltaX = e.clientX - freeDragState.startX;
-            const deltaY = e.clientY - freeDragState.startY;
+            const deltaX = (e.clientX - freeDragState.startX) / zoomRef.current;
+            const deltaY = (e.clientY - freeDragState.startY) / zoomRef.current;
             let newX = freeDragState.initialTaskX + deltaX;
             let newY = freeDragState.initialTaskY + deltaY;
             if (snapToGrid) {
@@ -1388,8 +1481,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
             onTasksUpdate(tasksRef.current.map(t => t.id === freeDragState.id ? { ...t, x: newX, y: newY } : t));
 
             // 자유 카드 드래그 시 그룹 하이라이트 + 드롭 프리뷰
-            const cardCenterX = newX + gridConfig.cardWidth / 2;
-            const cardCenterY = newY + gridConfig.cardHeight / 2;
+            const size = cardSize(tasksRef.current.find(t => t.id === freeDragState.id) ?? {});
+            const cardCenterX = newX + size.width / 2;
+            const cardCenterY = newY + size.height / 2;
             let targetGroup: Group | null = null;
             for (const group of groups) {
                 if (isPointInGroup(cardCenterX, cardCenterY, group)) {
@@ -1421,21 +1515,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         // 우클릭 팬 종료
         if (panState) {
             const wasPanning = panState.hasMoved;
+            rightClickPanned.current = wasPanning;
             setPanState(null);
 
             // 팬 동작이 없었으면 (제자리 우클릭) 컨텍스트 메뉴 표시
             if (!wasPanning && containerRef.current) {
                 const container = containerRef.current;
                 const rect = container.getBoundingClientRect();
-                const x = e.clientX - rect.left + container.scrollLeft;
-                const y = e.clientY - rect.top + container.scrollTop;
-                const taskEl = (e.target as HTMLElement).closest('[id^="task-"]');
-                let targetTaskId: number | undefined;
-                if (taskEl) {
-                    const match = taskEl.id.match(/^task-(\d+)$/);
-                    if (match) targetTaskId = parseInt(match[1], 10);
-                }
-                setBackgroundMenu({ x, y, taskX: x, taskY: y, targetTaskId });
+                const { x, y } = worldPoint(e.clientX, e.clientY);
+                setBackgroundMenu({ x: worldPoint(Math.min(e.clientX, rect.right - 220 * zoomRef.current), e.clientY).x, y: worldPoint(e.clientX, Math.min(e.clientY, rect.bottom - 170 * zoomRef.current)).y, taskX: x, taskY: y, ...panState.target });
             }
             return;
         }
@@ -1456,7 +1544,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
         if (selectionBox) setSelectionBox(null);
         if (freeDragState) {
-            const task = tasks.find(t => t.id === freeDragState.id);
+            const task = tasksRef.current.find(t => t.id === freeDragState.id);
             if (task && (task.x !== freeDragState.initialTaskX || task.y !== freeDragState.initialTaskY) && task.x !== undefined && task.y !== undefined) {
                 // 롤백용 스냅샷
                 const snapshot: CardPositionSnapshot = {
@@ -1466,8 +1554,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 };
 
                 // 자유 배치 카드가 그룹 안에 드롭되면 column_id 설정
-                const cardCenterX = task.x + gridConfig.cardWidth / 2;
-                const cardCenterY = task.y + gridConfig.cardHeight / 2;
+                const cardCenterX = task.x + cardSize(task).width / 2;
+                const cardCenterY = task.y + cardSize(task).height / 2;
                 let targetGroup: Group | null = null;
                 for (const g of groups) {
                     if (isPointInGroup(cardCenterX, cardCenterY, g)) {
@@ -1477,6 +1565,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 }
 
                 if (targetGroup) {
+                    const gridConfig = groupGrid(tasksRef.current.filter(t => t.column_id === targetGroup.id || t.id === task.id));
                     // =========================================
                     // 자유 카드 → 그룹 드롭: 드롭 위치 기반 삽입
                     // 카드 사이에 넣거나, 가장자리면 맨 끝에 배치
@@ -1650,26 +1739,19 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     const handleBackgroundContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         // 팬 모드 중이면 컨텍스트 메뉴 표시하지 않음 (handlePointerUp에서 처리)
-        if (panState) return;
+        if (panState || rightClickPanned.current) return;
         if (!containerRef.current) return;
         const container = containerRef.current;
         const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left + container.scrollLeft;
-        const y = e.clientY - rect.top + container.scrollTop;
-        const taskEl = (e.target as HTMLElement).closest('[id^="task-"]');
-        let targetTaskId: number | undefined;
-        if (taskEl) {
-            const match = taskEl.id.match(/^task-(\d+)$/);
-            if (match) targetTaskId = parseInt(match[1], 10);
-        }
-        setBackgroundMenu({ x, y, taskX: x, taskY: y, targetTaskId });
+        const { x, y } = worldPoint(e.clientX, e.clientY);
+        setBackgroundMenu({ x: worldPoint(Math.min(e.clientX, rect.right - 220 * zoomRef.current), e.clientY).x, y: worldPoint(e.clientX, Math.min(e.clientY, rect.bottom - 170 * zoomRef.current)).y, taskX: x, taskY: y, ...resolveBoardMenuTarget(rightClickStart.current, e.target as Element) });
         setActiveMenu(null);
     };
 
     // 그룹에 속하지 않은 자유 배치 카드들
-    const freeCards = useMemo(() =>
-            tasks.filter(t => !t.column_id || !groups.some(g => g.id === t.column_id)),
-        [tasks, groups]);
+    // 이동 중에도 데이터가 같다면 그룹별 카드·자유 카드·ID 조회표를 재사용합니다.
+    const taskIndex = useMemo(() => indexBoardTasks(tasks, groups), [tasks, groups]);
+    const freeCards = taskIndex.free;
 
     // 그룹 타이틀 수정 핸들러
     const handleGroupTitleEdit = useCallback((groupId: number, newTitle: string) => {
@@ -1683,10 +1765,33 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     }, [groups, onGroupsUpdate]);
 
     return (
-        <div className="h-full w-full flex flex-col bg-gray-50 dark:bg-[#0a0a0f] relative">
+        <div className="h-full w-full flex flex-col bg-gray-50 dark:bg-[var(--canvas-dark)] relative">
+            {pendingTaskDelete !== null && <DeleteConfirmation
+                title="카드 삭제"
+                description={`‘${tasks.find(task => task.id === pendingTaskDelete)?.title ?? '선택한 카드'}’와 연결선을 삭제합니다. 이 작업은 되돌릴 수 없습니다.`}
+                onCancel={() => setPendingTaskDelete(null)}
+                onConfirm={() => handleDeleteTask(pendingTaskDelete)}
+            />}
             {/* Header */}
-            <div className="flex-shrink-0 bg-white/80 dark:bg-[#12131a]/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 p-4 flex items-center justify-between z-10 shadow-sm">
+            {arrangeMessage && <p role="status" className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200">{arrangeMessage}</p>}
+            <div className="theme-surface flex-shrink-0 bg-white/80 dark:bg-[var(--surface-panel)]/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 p-4 flex items-center justify-between z-10 shadow-sm">
                 <div className="flex items-center gap-4">
+                    {onArrange && <button disabled={arranging || pendingCount > 0 || !!groupDragState || !!freeDragState || !!dragContext} onClick={async () => {
+                        setArranging(true);
+                        try {
+                            await onArrange((containerRef.current?.clientWidth ?? 960) / zoomRef.current);
+                            containerRef.current?.scrollTo({ top: 0, left: 0 });
+                            setArrangeMessage('위치를 정리했습니다. 카드 내용과 연결선은 유지됩니다.');
+                        } catch { setArrangeMessage('정리에 실패했습니다. 저장 공간을 확인해 주세요.'); }
+                        finally { setArranging(false); }
+                    }} className="whitespace-nowrap rounded-lg border border-gray-400 px-3 py-2 text-xs text-gray-700 dark:text-gray-200 disabled:opacity-50">{arranging ? '정리 중…' : '보드 정리'}</button>}
+                    <div role="group" aria-label="보드 확대 축소" className="flex items-center gap-2 whitespace-nowrap text-sm">
+                        <button type="button" aria-label="보드 축소" onClick={() => changeZoom(zoom / 1.2)}>−</button>
+                        <button type="button" title="100%로 복원" onClick={() => changeZoom(1)}>{Math.round(zoom * 100)}%</button>
+                        <button type="button" aria-label="보드 확대" onClick={() => changeZoom(zoom * 1.2)}>+</button>
+                        <button type="button" onClick={fitBoard}>전체 맞춤</button>
+                        <span className="text-xs text-gray-500">Ctrl + 휠</span>
+                    </div>
                     {/* Optimistic UI: 동기화 상태 인디케이터 */}
                     <SyncStatusIndicator
                         status={syncStatus}
@@ -1706,15 +1811,21 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                 <div className="h-6 w-[1px] bg-gray-300 dark:bg-white/10"></div>
                 <div className="flex items-center gap-3">
                     <button onClick={onToggleGrid} className={`p-2 rounded-lg transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/10 ${snapToGrid ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 dark:text-gray-500'}`} title={snapToGrid ? "스냅 끄기" : "스냅 켜기"}><Grid size={18} /></button>
-                    <button onClick={onToggleTheme} className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"><Sun size={18} className="hidden dark:block" /><Moon size={18} className="block dark:hidden" /></button>
+                    <button onClick={onToggleTheme} aria-label="테마 전환" title="라이트/다크 테마 전환" className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"><Sun size={18} className="hidden dark:block" /><Moon size={18} className="block dark:hidden" /></button>
                 </div>
             </div>
 
             {/* Canvas */}
             <div
                 ref={containerRef}
+                data-board-zoom={zoom}
                 className={`flex-1 overflow-auto relative custom-scrollbar w-full h-full bg-[radial-gradient(rgba(0,0,0,0.05)_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[length:24px_24px] ${panState ? 'cursor-grabbing' : ''}`}
                 onContextMenu={handleBackgroundContextMenu}
+                onPointerDownCapture={event => {
+                    pointerHeld.current = true;
+                    rightClickStart.current = event.button === 2 ? getBoardMenuTarget(event.target as Element) : null;
+                    rightClickPanned.current = false;
+                }}
                 onPointerDown={(evt) => handlePointerDown(evt)}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
@@ -1736,9 +1847,11 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     }
                 }}
             >
+                <div style={{ width: (Math.max(2000, boardBounds.right + 400) + origin.x) * zoom, height: (Math.max(2000, boardBounds.bottom + 400) + origin.y) * zoom, position: 'relative', overflow: 'hidden' }}>
+                <div ref={planeRef} style={{ position: 'absolute', left: origin.x * zoom, top: origin.y * zoom, width: Math.max(2000, boardBounds.right + 400), height: Math.max(2000, boardBounds.bottom + 400), transform: `scale(${zoom})`, transformOrigin: '0 0' }}>
                 {/* ========== 레이어 1: 그룹 배경 (z-0) ========== */}
                 {groups.map(group => {
-                    const groupTasks = tasks.filter(t => t.column_id === group.id);
+                    const groupTasks = taskIndex.byGroup.get(group.id) ?? [];
                     // 드롭 타겟 하이라이트:
                     // 1. useSortableGrid에서 계산된 dropPreview
                     // 2. 자유 카드 드래그 시 freeCardTargetGroupId
@@ -1779,14 +1892,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                         key={`placeholder-${group.id}`}
                                         x={pos.x}
                                         y={pos.y}
-                                        width={gridConfig.cardWidth}
-                                        height={gridConfig.cardHeight}
+                                        width={cardSize(tasks.find(t => t.id === (freeDragState?.id ?? dragContext?.taskId)) ?? {}).width}
+                                        height={cardSize(tasks.find(t => t.id === (freeDragState?.id ?? dragContext?.taskId)) ?? {}).height}
                                         isVisible={true}
                                     />
                                 );
                             }
 
-                            const task = tasks.find(t => t.id === pos.taskId);
+                            const task = taskIndex.byId.get(pos.taskId);
                             if (!task) return null;
 
                             const isDragging = isTaskBeingDragged(task.id);
@@ -1802,14 +1915,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                                     style={{
                                         left: pos.x,
                                         top: pos.y,
-                                        width: gridConfig.cardWidth,
-                                        height: gridConfig.cardHeight,
+                                        ...cardSize(task),
                                         transform: `translate(${transition.x}px, ${transition.y}px)`,
                                         transition: transition.x !== 0 || transition.y !== 0 ? 'transform 200ms ease-out' : 'none',
                                     }}
                                 >
                                     <TaskCard
                                         task={task}
+                                        onResize={size => onTaskUpdate(task.id, size)}
                                         variant="sticky"
                                         isGrouped={true}
                                         isSelected={selectedTaskIds.has(task.id)}
@@ -1859,15 +1972,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         style={{
                             left: sortableDragPos.x,
                             top: sortableDragPos.y,
-                            width: gridConfig.cardWidth,
-                            height: gridConfig.cardHeight,
+                            ...cardSize(tasks.find(t => t.id === dragContext.taskId) ?? {}),
                             opacity: 0.9,
                             boxShadow: '0 20px 40px rgba(0,0,0,0.2), 0 10px 20px rgba(0,0,0,0.1)',
                             transform: 'rotate(2deg)',
                         }}
                     >
                         {(() => {
-                            const task = tasks.find(t => t.id === dragContext.taskId);
+                            const task = taskIndex.byId.get(dragContext.taskId);
                             if (!task) return null;
                             return (
                                 <TaskCard
@@ -1891,6 +2003,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                     <TaskCard
                         key={task.id}
                         task={task}
+                        onResize={size => onTaskUpdate(task.id, size)}
                         variant="sticky"
                         isGrouped={false}
                         style={{ position: 'absolute', left: task.x || 0, top: task.y || 0 }}
@@ -1962,8 +2075,13 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
                 {activeMenu && (
                     <div className="absolute z-50 glass-card rounded-2xl overflow-hidden min-w-[140px] animate-in fade-in zoom-in-95 duration-100" style={{ left: activeMenu.x, top: activeMenu.y }} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-                        <button onClick={() => { const conn = getConnectionById(activeMenu.id); if (conn) onConnectionUpdate(activeMenu.id, { shape: conn.shape === 'straight' ? 'bezier' : 'straight' }); setActiveMenu(null); }} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium"><Spline size={14} /><span>{getConnectionById(activeMenu.id)?.shape === 'straight' ? '곡선으로 변경' : '직선으로 변경'}</span></button>
-                        <button onClick={() => { const conn = getConnectionById(activeMenu.id); if (conn) onConnectionUpdate(activeMenu.id, { style: conn.style === 'dashed' ? 'solid' : 'dashed' }); setActiveMenu(null); }} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium"><Activity size={14} /><span>{getConnectionById(activeMenu.id)?.style === 'dashed' ? '실선으로 변경' : '점선으로 변경'}</span></button>
+                        <button disabled={savingConnection} onClick={() => { const conn = getConnectionById(activeMenu.id); if (conn) void saveConnectionChange({ shape: conn.shape === 'straight' ? 'bezier' : 'straight' }); }} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium"><Spline size={14} /><span>{getConnectionById(activeMenu.id)?.shape === 'straight' ? '곡선으로 변경' : '직선으로 변경'}</span></button>
+                        <div role="group" aria-label="선 종류">
+                            {([{ value: 'solid', label: '실선', sample: '───' }, { value: 'dashed', label: '점선', sample: '┄┄┄' }, { value: 'arrow', label: '화살표선', sample: '──→' }] as const).map(option => <button key={option.value} disabled={savingConnection} aria-pressed={(getConnectionById(activeMenu.id)?.style ?? 'solid') === option.value} onClick={() => void saveConnectionChange({ style: option.value })} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 w-full text-left font-medium disabled:opacity-50">
+                                <span aria-hidden="true">{option.sample}</span><span>{option.label}</span>{(getConnectionById(activeMenu.id)?.style ?? 'solid') === option.value && <Check size={14} />}
+                            </button>)}
+                        </div>
+                        {connectionError && <p role="alert" className="max-w-56 p-3 text-xs text-red-600 dark:text-red-300">{connectionError}</p>}
                         <div className="h-[1px] bg-gray-200 dark:bg-white/10 my-1 mx-2"></div>
                         <button onClick={() => { onConnectionDelete(activeMenu.id); setActiveMenu(null); }} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium"><Trash2 size={14} /><span>삭제</span></button>
                     </div>
@@ -1975,15 +2093,21 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                             {isCreatingTask ? <Loader2 size={16} className="animate-spin text-blue-500" /> : <FilePlus size={16} className="text-blue-500" />}
                             <span>새로운 카드 추가</span>
                         </button>
-                        {backgroundMenu.targetTaskId && (
-                            <button onClick={() => handleDeleteTask(backgroundMenu.targetTaskId!)} disabled={isDeletingTask} className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium disabled:opacity-50">
+                        {backgroundMenu.targetTaskId !== undefined && (
+                            <button onClick={() => { setPendingTaskDelete(backgroundMenu.targetTaskId!); setBackgroundMenu(null); }} disabled={isDeletingTask} className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 w-full text-left font-medium disabled:opacity-50">
                                 {isDeletingTask ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                                 <span>카드 삭제</span>
+                            </button>
+                        )}
+                        {backgroundMenu.targetGroupId !== undefined && onGroupDelete && (
+                            <button onClick={async () => { const id = backgroundMenu.targetGroupId!; setBackgroundMenu(null); await onGroupDelete(id); }} className="flex items-center gap-3 px-4 py-3 text-xs text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left font-medium">
+                                <Trash2 size={16} /><span>그룹 삭제 (카드 유지)</span>
                             </button>
                         )}
                         <button disabled className="flex items-center gap-3 px-4 py-3 text-xs hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 cursor-not-allowed w-full text-left font-medium border-t border-gray-200 dark:border-white/10"><Clipboard size={16} /><span>붙여넣기</span></button>
                     </div>
                 )}
+                </div></div>
             </div>
 
             <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-8 right-8 w-16 h-16 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-[0_8px_30px_rgba(59,130,246,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center z-40 group backdrop-blur-sm border border-white/20">
@@ -2006,8 +2130,8 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
                         // 오버레이는 래퍼(헤더 포함) 기준이므로 offsetTop/Left 보정 필요
                         const containerEl = containerRef.current;
                         if (!containerEl) return null;
-                        const displayX = cursor.x - containerEl.scrollLeft + containerEl.offsetLeft;
-                        const displayY = cursor.y - containerEl.scrollTop + containerEl.offsetTop;
+                        const displayX = (cursor.x + origin.x) * zoom - containerEl.scrollLeft + containerEl.offsetLeft;
+                        const displayY = (cursor.y + origin.y) * zoom - containerEl.scrollTop + containerEl.offsetTop;
 
                         return (
                             <div

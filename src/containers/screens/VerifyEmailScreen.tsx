@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/VerifyEmailScreen.tsx
+ * 이메일 인증 코드 입력과 인증 결과를 보여 줍니다. 이메일은 앞 단계에서 전달받아야 합니다.
+ * 재전송 버튼 UI가 있어도 현재 페이지의 onResendCode는 빈 콜백입니다. 실제 재전송 기능으로 설명하면 안 됩니다.
+ */
+
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';

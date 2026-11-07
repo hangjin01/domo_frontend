@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/task/TaskDetailModal.tsx
+ * 선택한 카드의 제목·내용·일정·담당자·댓글·파일을 편집하는 상세 모달입니다.
+ * 부분 변경은 Task 전체를 새로 만드는 것과 다릅니다. 전달하지 않은 관계/날짜/좌표를 기본값으로 덮어쓰지 않도록 저장 경로를 확인합니다.
+ */
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -5,6 +11,8 @@ import { Task, Comment, Tag as TagType, FileMetadata, TaskFile } from '@/src/mod
 import { STICKY_COLORS, getStickyStyle } from '@/src/models/utils/canvas';
 import { createCardComment, getCardComments, deleteCardComment, detachFileFromCard, uploadFile, attachFileToCard, getProjectFiles } from '@/src/models/api';
 import { FileVersionDropdown } from '@/src/views/common';
+import { MoneyFields } from './MoneyFields';
+import { CardSizeFields } from './CardSizeFields';
 import {
     CreditCard, Palette, X, Briefcase, FileText, StickyNote, AlignLeft,
     Paperclip, List, Bookmark, Tag, Clock, Plus, CheckSquare, ChevronRight, Loader2, Trash2, Unlink, Upload
@@ -13,7 +21,7 @@ import {
 interface TaskDetailModalProps {
     task: Task;
     onClose: () => void;
-    onUpdate: (task: Task) => void;
+    onUpdate: (task: Task) => void | Promise<void>;
     currentUser: string;
     currentUserId?: number; // 댓글 삭제 권한 체크용
     projectId?: number;
@@ -373,7 +381,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={onClose}>
             <div
-                className="w-full max-w-4xl bg-white dark:bg-[#323940] rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700/50 custom-scrollbar"
+                className="w-full max-w-4xl bg-white dark:bg-[var(--surface-panel)] rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700/50 custom-scrollbar"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6 md:p-8">
@@ -390,7 +398,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                 />
                                 <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                                     <span>목록:</span>
-                                    <span className="px-2 py-0.5 bg-gray-100 dark:bg-[#22272b] rounded underline cursor-pointer hover:text-domo-primary transition-colors">
+                                    <span className="px-2 py-0.5 bg-gray-100 dark:bg-[var(--surface-panel)] rounded underline cursor-pointer hover:text-domo-primary transition-colors">
                                         {getStatusLabel(task.status)}
                                     </span>
                                     <div className="w-px h-3 bg-gray-300 dark:bg-gray-600 mx-1"></div>
@@ -420,7 +428,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                 </div>
                             </div>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#22272b] rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors">
+                        <button aria-label="카드 상세 닫기" onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[var(--surface-panel)] rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors">
                             <X size={20} />
                         </button>
                     </div>
@@ -464,7 +472,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     {task.description && !isEditingDesc && (
                                         <button
                                             onClick={() => setIsEditingDesc(true)}
-                                            className="text-xs bg-gray-200 dark:bg-[#22272b] px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-[#2c333a] transition-colors"
+                                            className="text-xs bg-gray-200 dark:bg-[var(--surface-panel)] px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-[var(--surface-raised)] transition-colors"
                                         >
                                             수정
                                         </button>
@@ -475,7 +483,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                         <div className="animate-in fade-in duration-200">
                                             <textarea
                                                 autoFocus
-                                                className="w-full bg-white dark:bg-[#22272b] text-gray-900 dark:text-gray-200 p-3 rounded-lg border-2 border-domo-primary focus:outline-none min-h-[150px] text-sm resize-y"
+                                                className="w-full bg-white dark:bg-[var(--surface-panel)] text-gray-900 dark:text-gray-200 p-3 rounded-lg border-2 border-domo-primary focus:outline-none min-h-[150px] text-sm resize-y"
                                                 placeholder="자세한 설명을 추가하세요..."
                                                 value={desc}
                                                 onChange={(e) => setDesc(e.target.value)}
@@ -489,7 +497,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                 </button>
                                                 <button
                                                     onClick={() => { setIsEditingDesc(false); setDesc(task.description || ''); }}
-                                                    className="px-4 py-1.5 hover:bg-gray-100 dark:hover:bg-[#22272b] text-gray-700 dark:text-gray-300 rounded font-medium text-sm transition-colors"
+                                                    className="px-4 py-1.5 hover:bg-gray-100 dark:hover:bg-[var(--surface-panel)] text-gray-700 dark:text-gray-300 rounded font-medium text-sm transition-colors"
                                                 >
                                                     취소
                                                 </button>
@@ -498,13 +506,16 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     ) : (
                                         <div
                                             onClick={() => setIsEditingDesc(true)}
-                                            className={`w-full min-h-[80px] rounded-lg p-3 text-sm cursor-pointer transition-colors ${task.description ? 'hover:bg-gray-100 dark:hover:bg-[#2c333a] text-gray-700 dark:text-gray-300 whitespace-pre-wrap' : 'bg-gray-100 dark:bg-[#22272b] hover:bg-gray-200 dark:hover:bg-[#2c333a] text-gray-500 dark:text-gray-400 italic'}`}
+                                            className={`w-full min-h-[80px] rounded-lg p-3 text-sm cursor-pointer transition-colors ${task.description ? 'hover:bg-gray-100 dark:hover:bg-[var(--surface-raised)] text-gray-700 dark:text-gray-300 whitespace-pre-wrap' : 'bg-gray-100 dark:bg-[var(--surface-panel)] hover:bg-gray-200 dark:hover:bg-[var(--surface-raised)] text-gray-500 dark:text-gray-400 italic'}`}
                                         >
                                             {task.description || "자세한 설명을 추가하세요..."}
                                         </div>
                                     )}
                                 </div>
                             </div>
+
+                            <MoneyFields key={task.id} task={task} onSave={onUpdate} />
+                            <CardSizeFields key={`size-${task.id}-${task.width}-${task.height}`} task={task} onSave={onUpdate} />
 
                             {/* Attachments Section */}
                             {((task.files && task.files.length > 0) || projectId) && (
@@ -521,8 +532,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                         )}
                                     </div>
                                     <div className="ml-8 grid gap-2">
-                                        {task.files.map((file, idx) => (
-                                            <div key={file.id || idx} className="group flex items-center justify-between p-3 bg-white dark:bg-[#22272b] border border-gray-200 dark:border-gray-700/50 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-[#2c333a] transition-colors">
+                                        {/* 프로젝트 ID가 있으면 첨부가 없어도 이 영역이 열리므로, 선택 필드는 빈 배열로 처리합니다. */}
+                                        {(task.files ?? []).map((file, idx) => (
+                                            <div key={file.id || idx} className="group flex items-center justify-between p-3 bg-white dark:bg-[var(--surface-panel)] border border-gray-200 dark:border-gray-700/50 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-[var(--surface-raised)] transition-colors">
                                                 <div className="flex items-center gap-3 overflow-hidden">
                                                     <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center shrink-0">
                                                         <FileText size={16} className="text-gray-500 dark:text-gray-400" />
@@ -581,13 +593,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                             )}
                                         </h3>
                                     </div>
-                                    <button className="text-sm bg-gray-200 dark:bg-[#22272b] hover:bg-gray-300 dark:hover:bg-[#2c333a] px-3 py-1.5 rounded text-gray-700 dark:text-gray-300 transition-colors">자세히 보기</button>
+                                    <button className="text-sm bg-gray-200 dark:bg-[var(--surface-panel)] hover:bg-gray-300 dark:hover:bg-[var(--surface-raised)] px-3 py-1.5 rounded text-gray-700 dark:text-gray-300 transition-colors">자세히 보기</button>
                                 </div>
 
                                 <div className="flex gap-3 mb-6">
                                     <div className="w-8 h-8 rounded-full bg-domo-accent flex-shrink-0 flex items-center justify-center text-white text-xs font-bold shadow-md select-none">{currentUser.slice(0, 2).toUpperCase()}</div>
                                     <div className="flex-1">
-                                        <div className="bg-white dark:bg-[#22272b] rounded-lg border border-gray-300 dark:border-gray-700/50 hover:border-gray-400 dark:hover:border-gray-600 transition-colors overflow-hidden focus-within:ring-1 focus-within:ring-domo-primary/50 shadow-sm">
+                                        <div className="bg-white dark:bg-[var(--surface-panel)] rounded-lg border border-gray-300 dark:border-gray-700/50 hover:border-gray-400 dark:hover:border-gray-600 transition-colors overflow-hidden focus-within:ring-1 focus-within:ring-domo-primary/50 shadow-sm">
                                             <input
                                                 type="text"
                                                 placeholder="댓글을 입력하세요..."
@@ -602,7 +614,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                 }}
                                                 disabled={isSavingComment}
                                             />
-                                            <div className={`flex justify-between items-center px-2 py-1.5 bg-gray-50 dark:bg-[#2c333a]/50 border-t border-gray-200 dark:border-gray-700/30 transition-all duration-200 ${commentText ? 'opacity-100 max-h-10' : 'opacity-100 max-h-10'}`}>
+                                            <div className={`flex justify-between items-center px-2 py-1.5 bg-gray-50 dark:bg-[var(--surface-raised)]/50 border-t border-gray-200 dark:border-gray-700/30 transition-all duration-200 ${commentText ? 'opacity-100 max-h-10' : 'opacity-100 max-h-10'}`}>
                                                 <div className="flex gap-1">
                                                     <button className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400"><Paperclip size={14} /></button>
                                                     <button className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400">@</button>
@@ -610,7 +622,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                 <button
                                                     onClick={handleAddComment}
                                                     disabled={!commentText.trim() || isSavingComment}
-                                                    className={`px-3 py-1 border border-transparent text-xs rounded font-medium transition-colors flex items-center gap-1 ${commentText.trim() && !isSavingComment ? 'bg-domo-primary text-white hover:bg-domo-primary-hover' : 'bg-gray-200 dark:bg-[#22272b] border-gray-300 dark:border-gray-600/50 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
+                                                    className={`px-3 py-1 border border-transparent text-xs rounded font-medium transition-colors flex items-center gap-1 ${commentText.trim() && !isSavingComment ? 'bg-domo-primary text-white hover:bg-domo-primary-hover' : 'bg-gray-200 dark:bg-[var(--surface-panel)] border-gray-300 dark:border-gray-600/50 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
                                                 >
                                                     {isSavingComment && <Loader2 className="animate-spin" size={12} />}
                                                     저장
@@ -624,7 +636,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     <div className="absolute left-[-22px] top-2 bottom-2 w-[2px] bg-gray-200 dark:bg-gray-800"></div>
                                     {comments.map((comment) => (
                                         <div key={comment.id} className="flex gap-3 group animate-in slide-in-from-left-2 duration-300">
-                                            <div className="absolute left-[-26px] bg-white dark:bg-[#323940] py-1">
+                                            <div className="absolute left-[-26px] bg-white dark:bg-[var(--surface-panel)] py-1">
                                                 <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-600"></div>
                                             </div>
                                             <div className="text-sm w-full">
@@ -647,7 +659,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                         </button>
                                                     )}
                                                 </div>
-                                                <div className="bg-white dark:bg-[#22272b] p-2.5 rounded-lg text-gray-800 dark:text-gray-300 shadow-sm border border-gray-200 dark:border-gray-700/30">
+                                                <div className="bg-white dark:bg-[var(--surface-panel)] p-2.5 rounded-lg text-gray-800 dark:text-gray-300 shadow-sm border border-gray-200 dark:border-gray-700/30">
                                                     {comment.text}
                                                 </div>
                                             </div>
@@ -665,36 +677,36 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                         <div className="hidden md:block w-[200px] space-y-6">
                             <div className="space-y-2">
                                 <span className="text-xs font-semibold text-gray-500 uppercase">카드에 추가</span>
-                                <button onClick={() => setIsSettingType(!isSettingType)} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Bookmark size={14} /><span>분류</span></button>
+                                <button onClick={() => setIsSettingType(!isSettingType)} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[var(--surface-raised)] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Bookmark size={14} /><span>분류</span></button>
                                 {isSettingType && (
-                                    <div className="bg-gray-100 dark:bg-[#22272b] p-2 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1 animate-in slide-in-from-top-2">
-                                        <button onClick={() => setTaskType(0)} className="w-full text-left px-2 py-1.5 hover:bg-gray-200 dark:hover:bg-[#2c333a] rounded text-sm flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold"><Briefcase size={14} /><span>일</span></button>
-                                        <button onClick={() => setTaskType(1)} className="w-full text-left px-2 py-1.5 hover:bg-gray-200 dark:hover:bg-[#2c333a] rounded text-sm flex items-center gap-2 text-orange-600 dark:text-orange-400 font-bold"><StickyNote size={14} /><span>메모</span></button>
+                                    <div className="bg-gray-100 dark:bg-[var(--surface-panel)] p-2 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1 animate-in slide-in-from-top-2">
+                                        <button onClick={() => setTaskType(0)} className="w-full text-left px-2 py-1.5 hover:bg-gray-200 dark:hover:bg-[var(--surface-raised)] rounded text-sm flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold"><Briefcase size={14} /><span>일</span></button>
+                                        <button onClick={() => setTaskType(1)} className="w-full text-left px-2 py-1.5 hover:bg-gray-200 dark:hover:bg-[var(--surface-raised)] rounded text-sm flex items-center gap-2 text-orange-600 dark:text-orange-400 font-bold"><StickyNote size={14} /><span>메모</span></button>
                                     </div>
                                 )}
 
-                                <button onClick={() => setIsAddingTag(!isAddingTag)} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Tag size={14} /><span>라벨</span></button>
+                                <button onClick={() => setIsAddingTag(!isAddingTag)} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[var(--surface-raised)] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Tag size={14} /><span>라벨</span></button>
                                 {isAddingTag && (
-                                    <div className="bg-gray-100 dark:bg-[#22272b] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-3 animate-in slide-in-from-top-2">
-                                        <input autoFocus type="text" placeholder="라벨 이름" className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2c333a] outline-none" value={newTagText} onChange={(e) => setNewTagText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTag()} />
+                                    <div className="bg-gray-100 dark:bg-[var(--surface-panel)] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-3 animate-in slide-in-from-top-2">
+                                        <input autoFocus type="text" placeholder="라벨 이름" className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-[var(--surface-raised)] outline-none" value={newTagText} onChange={(e) => setNewTagText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTag()} />
                                         <div className="flex flex-wrap gap-1.5">{STICKY_COLORS.map(c => (<button key={c.id} onClick={() => setNewTagColor(c.id)} className={`w-5 h-5 rounded-full ${c.dot} border border-black/10 transition-transform hover:scale-110 ${newTagColor === c.id ? 'ring-2 ring-domo-primary ring-offset-1 dark:ring-offset-[#22272b]' : ''}`} />))}</div>
                                         <div className="flex justify-end gap-2"><button onClick={() => setIsAddingTag(false)} className="text-xs px-2 py-1 hover:underline">취소</button><button onClick={addTag} disabled={!newTagText.trim()} className="text-xs bg-domo-primary text-white px-3 py-1 rounded hover:bg-domo-primary-hover disabled:opacity-50">추가</button></div>
                                     </div>
                                 )}
-                                <button onClick={() => setIsEditingDate(!isEditingDate)} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Clock size={14} /><span>날짜</span></button>
+                                <button onClick={() => setIsEditingDate(!isEditingDate)} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[var(--surface-raised)] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Clock size={14} /><span>날짜</span></button>
                                 {isEditingDate && (
-                                    <div className="bg-gray-100 dark:bg-[#22272b] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-3 animate-in slide-in-from-top-2">
-                                        <div><label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">시작일</label><input type="date" className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2c333a] outline-none text-gray-900 dark:text-gray-100" value={startDate} onChange={(e) => { const newStart = e.target.value; setStartDate(newStart); updateTime(newStart, endDate); }} /></div>
-                                        <div><label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">종료일</label><input type="date" className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2c333a] outline-none text-gray-900 dark:text-gray-100" value={endDate} min={startDate} onChange={(e) => { const newEnd = e.target.value; setEndDate(newEnd); updateTime(startDate, newEnd); }} /></div>
+                                    <div className="bg-gray-100 dark:bg-[var(--surface-panel)] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-3 animate-in slide-in-from-top-2">
+                                        <div><label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">시작일</label><input type="date" className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-[var(--surface-raised)] outline-none text-gray-900 dark:text-gray-100" value={startDate} onChange={(e) => { const newStart = e.target.value; setStartDate(newStart); updateTime(newStart, endDate); }} /></div>
+                                        <div><label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">종료일</label><input type="date" className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-[var(--surface-raised)] outline-none text-gray-900 dark:text-gray-100" value={endDate} min={startDate} onChange={(e) => { const newEnd = e.target.value; setEndDate(newEnd); updateTime(startDate, newEnd); }} /></div>
                                     </div>
                                 )}
-                                <button onClick={addMember} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Plus size={14} /><span>멤버</span></button>
-                                <button onClick={addChecklist} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><CheckSquare size={14} /><span>체크리스트</span></button>
+                                <button onClick={addMember} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[var(--surface-raised)] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Plus size={14} /><span>멤버</span></button>
+                                <button onClick={addChecklist} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[var(--surface-raised)] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><CheckSquare size={14} /><span>체크리스트</span></button>
                                 {projectId && (
                                     <>
-                                        <button onClick={toggleAttachPanel} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Paperclip size={14} /><span>파일 첨부</span></button>
+                                        <button onClick={toggleAttachPanel} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[var(--surface-raised)] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><Paperclip size={14} /><span>파일 첨부</span></button>
                                         {isAttachingFile && (
-                                            <div className="bg-gray-100 dark:bg-[#22272b] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2 animate-in slide-in-from-top-2">
+                                            <div className="bg-gray-100 dark:bg-[var(--surface-panel)] p-3 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2 animate-in slide-in-from-top-2">
                                                 <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleUploadAndAttach} />
                                                 <button onClick={() => fileInputRef.current?.click()} disabled={isUploadingFile} className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white rounded-lg text-xs font-medium transition-colors">
                                                     {isUploadingFile ? <><Loader2 size={12} className="animate-spin" /><span>업로드 중...</span></> : <><Upload size={12} /><span>새 파일 업로드</span></>}
@@ -705,7 +717,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                     <div className="space-y-1 max-h-32 overflow-y-auto">
                                                         <div className="text-xs text-gray-500 mb-1">프로젝트 파일</div>
                                                         {projectFiles.map(f => (
-                                                            <button key={f.id} onClick={() => handleAttachExistingFile(f)} className="w-full text-left px-2 py-1.5 hover:bg-gray-200 dark:hover:bg-[#2c333a] rounded text-xs truncate text-gray-700 dark:text-gray-300">{f.filename}</button>
+                                                            <button key={f.id} onClick={() => handleAttachExistingFile(f)} className="w-full text-left px-2 py-1.5 hover:bg-gray-200 dark:hover:bg-[var(--surface-raised)] rounded text-xs truncate text-gray-700 dark:text-gray-300">{f.filename}</button>
                                                         ))}
                                                     </div>
                                                 ) : (
@@ -718,8 +730,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                             </div>
                             <div className="space-y-2">
                                 <span className="text-xs font-semibold text-gray-500 uppercase">작업</span>
-                                <button className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[#2A2E33] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><ChevronRight size={14} /><span>이동</span></button>
-                                <button onClick={() => { onClose(); }} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-red-100 dark:bg-[#2A2E33] dark:hover:bg-red-900/50 hover:text-red-600 dark:hover:text-red-200 px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><X size={14} /><span>아카이브</span></button>
+                                <button className="w-full flex items-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-[var(--surface-raised)] dark:hover:bg-[#38414a] px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><ChevronRight size={14} /><span>이동</span></button>
+                                <button onClick={() => { onClose(); }} className="w-full flex items-center gap-2 bg-gray-200 hover:bg-red-100 dark:bg-[var(--surface-raised)] dark:hover:bg-red-900/50 hover:text-red-600 dark:hover:text-red-200 px-3 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 transition-colors font-medium text-left"><X size={14} /><span>아카이브</span></button>
                             </div>
                         </div>
                     </div>

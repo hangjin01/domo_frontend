@@ -1,3 +1,11 @@
+/**
+ * [파일 안내] frontend/src/models/types/index.ts
+ * 프론트 전체에서 공유하는 도메인 모델·API 입출력·실시간 이벤트 타입을 정의합니다.
+ * User/Workspace/Project는 화면의 기본 맥락, Task/Group/Column/Connection은 캔버스, Post/File/Voice 타입은 각 부가기능의 계약입니다.
+ * TypeScript 타입은 런타임 JSON을 검증하지 않습니다. 서버 schemas.py와 필드/nullable/날짜/ID 의미를 함께 맞춰야 합니다.
+ * 특히 Task.boardId, Column.project_id, Task.column_id는 이름이 비슷해도 프로젝트와 그룹이라는 서로 다른 식별자를 나타냅니다.
+ */
+
 // src/models/types/index.ts
 
 // ============================================
@@ -70,7 +78,7 @@ export interface Workspace {
 // 3. 보드 / 태스크 / 노드 (프론트엔드용)
 // ============================================
 
-export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings' | 'community' | 'chat';
+export type ViewMode = 'dashboard' | 'inbox' | 'planner' | 'board' | 'calendar' | 'timeline' | 'profile' | 'settings' | 'community' | 'chat' | 'money';
 
 export type TaskStatus = 'inbox' | 'todo' | 'doing' | 'in-progress' | 'done';
 
@@ -98,6 +106,11 @@ export interface TaskFile {
 
 // 프론트엔드 캔버스용 Task (UI에서 사용)
 export interface Task {
+  /** 캔버스 카드 크기(px). 생략 시 280×140, 로컬 저장/백업에 함께 보존합니다. */
+  width?: number;
+  height?: number;
+  /** 카드당 하나의 원화 금액과 기준 날짜. null이면 금액 기능을 사용하지 않습니다. */
+  money?: { mode: 'plus' | 'minus' | 'sum' | 'avg'; amount: number; date: string } | null;
   id: number;
   title: string;
   status: TaskStatus;
@@ -176,7 +189,7 @@ export interface Connection {
   from: number;
   to: number;
   shape?: 'bezier' | 'straight';
-  style?: 'solid' | 'dashed';
+  style?: 'solid' | 'dashed' | 'arrow';
   boardId?: number;
   sourceHandle?: 'left' | 'right';
   targetHandle?: 'left' | 'right';

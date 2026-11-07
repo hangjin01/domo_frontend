@@ -1,4 +1,10 @@
 /**
+ * [파일 안내] frontend/src/models/constants/grid.ts
+ * 그룹의 카드 폭/높이/간격과 인덱스↔위치 계산의 공통 기준입니다.
+ * relative는 부모 그룹 내부, absolute는 캔버스 기준입니다. 기존 데이터 이행용 판별/변환과 신규 드래그 계산을 구분합니다.
+ */
+
+/**
  * Grid & Card Constants
  *
  * 모든 그리드, 카드, 드래그 관련 상수의 단일 진실 공급원 (Single Source of Truth)

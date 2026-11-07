@@ -1,3 +1,11 @@
+/**
+ * [파일 안내] frontend/src/models/api/file.ts
+ * 담당 범위: 프로젝트 파일 목록·업로드·버전·다운로드 URL·카드 첨부.
+ * 호출 흐름: 화면/훅 → 이 모듈 → 로컬 저장/샘플 또는 공통 HTTP 래퍼 → 응답을 화면 타입으로 반환합니다.
+ * mock은 샘플 위주로 실제 바이너리 보존/다운로드가 미완성입니다. 실제 서버 다운로드 권한도 별도 보강 대상입니다.
+ * 함수의 성공 응답과 실제 기능 지원 여부는 같지 않습니다. 미구현/제약은 docs/05-recovery-and-backlog.md를 함께 확인하세요.
+ */
+
 import type { FileMetadata, FileVersion } from '../types';
 import { API_CONFIG, apiFetch, apiUpload, mockDelay } from './config';
 

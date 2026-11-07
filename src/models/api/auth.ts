@@ -1,6 +1,14 @@
+/**
+ * [파일 안내] frontend/src/models/api/auth.ts
+ * 담당 범위: 로그인·학교 이메일 가입/인증·로그아웃·현재 사용자 조회.
+ * 호출 흐름: 화면/훅 → 이 모듈 → 로컬 저장/샘플 또는 공통 HTTP 래퍼 → 응답을 화면 타입으로 반환합니다.
+ * mock-auth의 탭 세션과 서버 session_id 쿠키는 서로 다른 인증 수단입니다. 모드 전환으로 계정이 이관되지 않습니다.
+ * 함수의 성공 응답과 실제 기능 지원 여부는 같지 않습니다. 미구현/제약은 docs/05-recovery-and-backlog.md를 함께 확인하세요.
+ */
+
 import type { AuthUser, LoginResponse, SignupResponse, VerifyResponse, User } from '../types';
 import { API_CONFIG, apiFetch, mockDelay } from './config';
-import { MOCK_USERS } from './mock-data';
+import { getMockUser, loginMock, logoutMock, signupMock, verifyMock } from './mock-auth';
 
 // ============================================
 // 인증 API
@@ -12,13 +20,7 @@ import { MOCK_USERS } from './mock-data';
 export async function login(email: string, password: string): Promise<LoginResponse> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(600);
-    const user = MOCK_USERS.find(u => u.email === email && u.password === password);
-    if (!user) {
-      throw new Error('이메일 또는 비밀번호가 일치하지 않습니다.');
-    }
-    if (!user.is_student_verified) {
-      throw new Error('이메일 인증이 완료되지 않았습니다.');
-    }
+    const user = loginMock(email, password);
     return {
       message: '로그인 성공',
       user: { email: user.email, name: user.name },
@@ -52,19 +54,7 @@ export async function signup(
 ): Promise<SignupResponse> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(600);
-    if (!email.endsWith('@jj.ac.kr')) {
-      throw new Error('전주대학교 이메일(@jj.ac.kr)만 사용 가능합니다.');
-    }
-    if (MOCK_USERS.some(u => u.email === email)) {
-      throw new Error('이미 가입된 이메일입니다.');
-    }
-    return {
-      id: 999,
-      email,
-      name,
-      nickname,
-      is_student_verified: false,
-    };
+    return signupMock(email, password, name, nickname) as SignupResponse;
   }
 
   // 백엔드: POST /api/auth/signup
@@ -103,10 +93,8 @@ export async function verify(email: string, code: string): Promise<VerifyRespons
   // Mock 모드
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(400);
-    if (code === '123456') {
-      return { message: '이메일 인증이 완료되었습니다.' };
-    }
-    throw new Error('인증 코드가 일치하지 않거나 만료되었습니다.');
+    verifyMock(email, code);
+    return { message: '이메일 인증이 완료되었습니다.' };
   }
 
   // 실제 서버 통신
@@ -122,6 +110,7 @@ export async function verify(email: string, code: string): Promise<VerifyRespons
 export async function logout(): Promise<{ message: string }> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
+    logoutMock();
     return { message: '로그아웃 되었습니다.' };
   }
 
@@ -137,7 +126,7 @@ export async function logout(): Promise<{ message: string }> {
 export async function getCurrentUser(): Promise<User | null> {
   if (API_CONFIG.USE_MOCK) {
     await mockDelay(200);
-    return null;
+    return getMockUser();
   }
 
   try {

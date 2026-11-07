@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/community/PostDetail.tsx
+ * 게시글 본문과 댓글을 보여 주고 글 편집/삭제·댓글 작성/삭제를 연결합니다.
+ * 화면에서 작성자를 비교하는 것은 버튼 표시용입니다. 실제 권한 검증은 서버에 필요하며 mock은 권한 모델을 대체하지 않습니다.
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
     getProjectPost, getCommunityPost,

@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/common/FileVersionDropdown.tsx
+ * 파일의 버전 이력을 불러와 버전 선택/다운로드 동작을 제공합니다.
+ * 파일 ID는 파일 메타데이터, 버전 ID는 실제 내려받을 바이너리 버전을 가리킵니다. 다운로드 API에 어느 ID를 보내는지 구분합니다.
+ */
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -139,14 +145,14 @@ export const FileVersionDropdown: React.FC<FileVersionDropdownProps> = ({
     const panel = isOpen && typeof window !== 'undefined' ? createPortal(
         <div
             ref={panelRef}
-            className="fixed w-64 h-72 bg-white dark:bg-[#2c333a] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-[100] animate-in fade-in slide-in-from-left-2 duration-150 flex flex-col"
+            className="fixed w-64 h-72 bg-white dark:bg-[var(--surface-raised)] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-[100] animate-in fade-in slide-in-from-left-2 duration-150 flex flex-col"
             style={{
                 bottom: panelPosition.bottom,
                 left: panelPosition.left,
             }}
         >
             {/* 헤더 */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#22272b] shrink-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[var(--surface-panel)] shrink-0">
                 <div>
                     <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                         버전 히스토리

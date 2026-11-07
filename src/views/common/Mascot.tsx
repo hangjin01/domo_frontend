@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/common/Mascot.tsx
+ * 화면에 표시하는 마스코트 그래픽 컴포넌트입니다. 전달된 시각 속성에 따라 SVG/장식 UI를 구성합니다.
+ * 업무 데이터 저장이나 인증 처리는 담당하지 않습니다.
+ */
+
 
 import React from 'react';
 

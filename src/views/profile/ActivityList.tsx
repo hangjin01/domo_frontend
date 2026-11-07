@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/profile/ActivityList.tsx
+ * 사용자의 활동 로그를 읽거나 전달받은 맥락에 맞춰 표시하는 목록 UI입니다.
+ * mock 활동은 샘플 이력이며 모든 실제 편집에서 자동 기록되는 감사 로그가 아닙니다.
+ */
+
 'use client';
 
 import React from 'react';
@@ -19,7 +25,7 @@ export function ActivityList({ activities }: Props) {
     }
 
     return (
-        <div className="bg-white/40 dark:bg-[#1E212B]/60 backdrop-blur-md border border-white/20 dark:border-gray-700/50 rounded-2xl p-6 shadow-xl h-full overflow-hidden flex flex-col">
+        <div className="bg-white/40 dark:bg-[var(--surface-panel)]/60 backdrop-blur-md border border-white/20 dark:border-gray-700/50 rounded-2xl p-6 shadow-xl h-full overflow-hidden flex flex-col">
             <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 px-2">
                 Recent Activity
             </h3>

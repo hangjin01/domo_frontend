@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/community/PostList.tsx
+ * 게시글 카드 목록·검색/분류 및 글 선택/작성 진입을 표시합니다.
+ * 날짜/작성자 표시와 실제 저장 정보가 다를 수 있으므로 표시용 계산은 원본 데이터를 바꾸지 않게 유지합니다.
+ */
+
 import React from 'react';
 import type { Post } from '@/src/models/types';
 import { MessageSquare, Heart, Eye, User as UserIcon, Bookmark, RefreshCw, Image } from 'lucide-react';
@@ -61,7 +67,7 @@ export const PostList: React.FC<PostListProps> = ({ posts, onPostClick, layout =
                     <div
                         key={post.id}
                         onClick={() => onPostClick(post.id)}
-                        className="group flex flex-col bg-white dark:bg-[#1E212B] rounded-2xl overflow-hidden border border-gray-100 dark:border-white/5 transition-all duration-300 cursor-pointer"
+                        className="group flex flex-col bg-white dark:bg-[var(--surface-panel)] rounded-2xl overflow-hidden border border-gray-100 dark:border-white/5 transition-all duration-300 cursor-pointer"
                     >
                         {/* Card Image Area */}
                         <div className={`relative w-full aspect-[4/3] overflow-hidden ${post.image_url ? 'bg-gray-100 dark:bg-gray-800' : getGradient(post.id)} flex items-center justify-center`}>
@@ -124,7 +130,7 @@ export const PostList: React.FC<PostListProps> = ({ posts, onPostClick, layout =
 
     // Default: Table Layout
     return (
-        <div className="w-full overflow-hidden rounded-xl border border-gray-200 dark:border-white/10 shadow-sm bg-white dark:bg-[#1E212B]">
+        <div className="w-full overflow-hidden rounded-xl border border-gray-200 dark:border-white/10 shadow-sm bg-white dark:bg-[var(--surface-panel)]">
             <table className="w-full text-sm text-left">
                 <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
                 <tr>

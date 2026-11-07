@@ -1,3 +1,11 @@
+/**
+ * [파일 안내] frontend/src/models/api/activity.ts
+ * 담당 범위: 사용자/워크스페이스 활동 로그 조회.
+ * 호출 흐름: 화면/훅 → 이 모듈 → 로컬 저장/샘플 또는 공통 HTTP 래퍼 → 응답을 화면 타입으로 반환합니다.
+ * UI에서 읽는 기록입니다. mock 샘플은 모든 편집의 자동 감사 추적이 아니며 실제 기록 생성은 서버 logger를 확인합니다.
+ * 함수의 성공 응답과 실제 기능 지원 여부는 같지 않습니다. 미구현/제약은 docs/05-recovery-and-backlog.md를 함께 확인하세요.
+ */
+
 import { API_CONFIG, apiFetch, mockDelay } from './config';
 
 // ============================================

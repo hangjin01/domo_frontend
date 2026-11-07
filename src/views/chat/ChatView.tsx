@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/chat/ChatView.tsx
+ * 프로젝트의 채팅 이력을 읽고 useChatSocket의 새 메시지를 합쳐 전체 채팅 화면을 렌더링합니다.
+ * 메시지 ID로 중복을 막고 날짜별 구분/자동 스크롤을 적용합니다. mock의 연결 표시는 단일 브라우저 데모임을 명시합니다.
+ */
+
 // src/views/chat/ChatView.tsx
 'use client';
 
@@ -5,6 +11,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send } from 'lucide-react';
 import { useChatSocket } from '@/src/containers/hooks/chat';
 import { getChatMessages, type ChatMessage } from '@/src/models/api/chat';
+import { API_CONFIG } from '@/src/models/api/config';
 
 interface ChatViewProps {
     projectId: number;
@@ -112,7 +119,7 @@ export function ChatView({ projectId, currentUserId, currentUserName, projectNam
                         <div>
                             <h2 className="text-lg font-bold text-gray-900 dark:text-white">{projectName}</h2>
                             <span className={`text-xs font-medium ${isConnected ? 'text-green-500' : 'text-gray-400'}`}>
-                                {isConnected ? '실시간 연결됨' : '연결 중...'}
+                                {API_CONFIG.USE_MOCK ? '로컬 데모 · 이 브라우저에만 저장' : isConnected ? '실시간 연결됨' : '연결 중...'}
                             </span>
                         </div>
                     </div>

@@ -1,7 +1,15 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/board/useSortableGrid.ts
+ * 그룹 내부 카드의 정렬형 드래그를 계산합니다. 드래그 시작의 카드 순서/위치를 저장하고 현재 포인터로 드롭 후보를 계산합니다.
+ * CardSnapshot은 복원 기준, DropPreview는 임시 배치, DragEndResult는 종료 후 반영할 결과입니다.
+ * 임시 애니메이션 좌표를 영속 데이터로 오해하지 않도록 상대좌표 변환과 최종 종료 콜백을 함께 확인하세요.
+ */
+
 'use client';
 
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Task, Group } from '@/src/models/types';
+import { cardSize, groupGrid, groupedPosition } from '@/src/models/utils/cardLayout';
 import {
     GridConfig,
     DEFAULT_GRID_CONFIG,
@@ -188,16 +196,7 @@ export function useSortableGrid(
             return { x: cardX, y: cardY };
         }
 
-        // 그룹 내 카드: 상대/절대 좌표 판단 후 변환
-        const isRelative = isRelativeCoordinate(cardX, cardY, group.x, group.y, gridConfig);
-
-        if (isRelative) {
-            // 상대 좌표 → 절대 좌표 변환
-            return relativeToAbsolute(cardX, cardY, group.x, group.y);
-        } else {
-            // 이미 절대 좌표 (레거시 데이터)
-            return { x: cardX, y: cardY };
-        }
+        return groupedPosition(task, group, tasksRef.current);
     }, [gridConfig]);
 
     // ========== 카드 위치 계산 (렌더링용 - 절대 좌표 반환) ==========
@@ -300,6 +299,7 @@ export function useSortableGrid(
 
         // 그룹 내 카드면 초기 드롭 프리뷰 설정
         if (sourceGroupId !== null && sourceIndex !== -1 && sourceGroup) {
+            const gridConfig = groupGrid(getGroupCardsSorted(tasksRef.current, sourceGroupId));
             const absolutePos = indexToAbsolutePosition(sourceIndex, sourceGroup.x, sourceGroup.y, gridConfig);
             setDropPreview({
                 groupId: sourceGroupId,
@@ -315,9 +315,12 @@ export function useSortableGrid(
         groupId: number,
         dropIndex: number,
         groupCards: Task[],
-        group: Group
+        group: Group,
+        movingTaskId?: number
     ) => {
         const newTransitions: CardTransitions = {};
+        const moving = tasksRef.current.find(t => t.id === (movingTaskId ?? dragContextRef.current?.taskId));
+        const gridConfig = groupGrid([...groupCards, ...(moving ? [moving] : [])]);
 
         // 모든 카드의 트랜지션: 저장 좌표 → 타겟 위치
         // dropIndex 이전은 빈 자리 채우기(리플로우), 이후는 한 칸 밀림
@@ -325,8 +328,9 @@ export function useSortableGrid(
             const task = groupCards[i];
             const targetIndex = i >= dropIndex ? i + 1 : i;
             const targetPos = indexToRelativePosition(targetIndex, gridConfig);
-            const storedX = task.x ?? 0;
-            const storedY = task.y ?? 0;
+            const current = groupedPosition(task, group, tasksRef.current);
+            const storedX = current.x - group.x;
+            const storedY = current.y - group.y;
             const dx = targetPos.x - storedX;
             const dy = targetPos.y - storedY;
 
@@ -359,8 +363,9 @@ export function useSortableGrid(
         const dragY = clientY + canvasScrollY - ctx.offsetY;
 
         // 카드 중심점
-        const centerX = dragX + gridConfig.cardWidth / 2;
-        const centerY = dragY + gridConfig.cardHeight / 2;
+        const size = cardSize(tasksRef.current.find(t => t.id === ctx.taskId) ?? {});
+        const centerX = dragX + size.width / 2;
+        const centerY = dragY + size.height / 2;
 
         // 타겟 그룹 찾기
         let targetGroup: Group | null = null;
@@ -372,6 +377,7 @@ export function useSortableGrid(
         }
 
         if (targetGroup) {
+            const gridConfig = groupGrid(tasksRef.current.filter(t => t.column_id === targetGroup.id || t.id === ctx.taskId));
             // 그룹 내 드롭 위치 계산
             const groupCards = getGroupCardsSorted(tasksRef.current, targetGroup.id)
                 .filter(t => t.id !== ctx.taskId);
@@ -429,6 +435,7 @@ export function useSortableGrid(
         // 새 순서 배열 생성
         const newOrder = [...groupCards];
         newOrder.splice(preview.index, 0, task);
+        const gridConfig = groupGrid(newOrder);
 
         // 영향받은 카드들 추적 (API 동기화용)
         const affectedCards: Array<{
@@ -509,21 +516,10 @@ export function useSortableGrid(
                 finalY = currentDragPos.y;
             } else if (sourceGroup) {
                 // 스냅샷이 상대 좌표인지 확인
-                const isRelative = isRelativeCoordinate(
-                    snapshot.x,
-                    snapshot.y,
-                    sourceGroup.x,
-                    sourceGroup.y,
-                    gridConfig
-                );
-                if (isRelative) {
-                    const abs = relativeToAbsolute(snapshot.x, snapshot.y, sourceGroup.x, sourceGroup.y);
-                    finalX = abs.x;
-                    finalY = abs.y;
-                } else {
-                    finalX = snapshot.x;
-                    finalY = snapshot.y;
-                }
+                const task = tasksRef.current.find(t => t.id === ctx.taskId)!;
+                const abs = groupedPosition(task, sourceGroup, tasksRef.current);
+                finalX = abs.x;
+                finalY = abs.y;
             } else {
                 finalX = snapshot.x;
                 finalY = snapshot.y;
@@ -534,6 +530,7 @@ export function useSortableGrid(
                 tasksRef.current.filter(t => t.id !== ctx.taskId),
                 ctx.sourceGroupId!
             );
+            const gridConfig = groupGrid(remainingCards);
             const reflowMap = new Map<number, { x: number; y: number }>();
             for (let i = 0; i < remainingCards.length; i++) {
                 reflowMap.set(remainingCards[i].id, indexToRelativePosition(i, gridConfig));
@@ -728,6 +725,7 @@ export function useSortableGrid(
 
         const groupCards = getGroupCardsSorted(tasksRef.current, groupId)
             .filter(t => t.id !== excludeTaskId);
+        const gridConfig = groupGrid(tasksRef.current.filter(t => t.column_id === groupId || t.id === excludeTaskId));
         const dropIndex = absolutePositionToIndex(
             absoluteX, absoluteY,
             group.x, group.y,
@@ -741,7 +739,7 @@ export function useSortableGrid(
             absoluteX: absolutePos.x,
             absoluteY: absolutePos.y,
         });
-        calculateShiftTransitions(groupId, dropIndex, groupCards, group);
+        calculateShiftTransitions(groupId, dropIndex, groupCards, group, excludeTaskId);
         setHighlightedGroupId(groupId);
     }, [gridConfig, calculateShiftTransitions]);
 

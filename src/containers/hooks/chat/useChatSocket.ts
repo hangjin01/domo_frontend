@@ -1,8 +1,16 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/chat/useChatSocket.ts
+ * 프로젝트 채팅 WS의 연결·재연결·송수신을 관리합니다. MESSAGE_SENT는 메시지 이벤트, PING/PONG은 연결 유지용입니다.
+ * mock에서는 서버 대신 sendMockChatMessage로 브라우저에 저장하고 수신 콜백을 직접 부릅니다. 다른 탭/사용자에게 방송하지 않습니다.
+ * 프로젝트 전환/언마운트 시 기존 소켓과 타이머를 정리해야 다른 프로젝트 메시지가 섞이지 않습니다.
+ */
+
 // src/containers/hooks/chat/useChatSocket.ts
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { getWebSocketUrl } from '@/src/models/api/config';
+import { API_CONFIG, getWebSocketUrl } from '@/src/models/api/config';
+import { sendMockChatMessage } from '@/src/models/api/chat';
 import type { ChatMessage } from '@/src/models/api/chat';
 
 // ============================================
@@ -69,6 +77,10 @@ export function useChatSocket({
     }, []);
 
     const connect = useCallback(() => {
+        if (API_CONFIG.USE_MOCK) {
+            setConnectionState('connected');
+            return;
+        }
         if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
             return;
         }
@@ -137,6 +149,10 @@ export function useChatSocket({
     }, [connect, disconnect]);
 
     const sendMessage = useCallback((content: string) => {
+        if (API_CONFIG.USE_MOCK) {
+            onMessageReceivedRef.current?.(sendMockChatMessage(projectId, content));
+            return;
+        }
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({
                 type: 'MESSAGE_SENT',
@@ -144,7 +160,7 @@ export function useChatSocket({
                 user_id: currentUserId,
             }));
         }
-    }, [currentUserId]);
+    }, [currentUserId, projectId]);
 
     // 연결/해제 lifecycle
     useEffect(() => {

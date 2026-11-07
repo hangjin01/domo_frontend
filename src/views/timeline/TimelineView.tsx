@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/timeline/TimelineView.tsx
+ * 카드의 시작/마감 구간을 시간축에 표시하는 타임라인입니다.
+ * 시간 구간을 화면 폭/위치로 바꾸므로 날짜 범위와 일수 계산의 경계를 확인합니다. 별도 ProjectEvent CRUD가 완성된 화면은 아닙니다.
+ */
+
 'use client';
 
 import React, { useState } from 'react';
@@ -72,8 +78,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ tasks, onTaskSelect 
         </div>
       </header>
       <div className="flex-1 overflow-auto border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-[#16181D] shadow-sm relative custom-scrollbar">
-        <div className="flex min-w-max sticky top-0 z-20 bg-gray-50 dark:bg-[#1E212B] border-b border-gray-200 dark:border-gray-800 shadow-sm">
-          <div className="sticky left-0 z-30 flex bg-gray-50 dark:bg-[#1E212B] border-r border-gray-200 dark:border-gray-800 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">
+        <div className="flex min-w-max sticky top-0 z-20 bg-gray-50 dark:bg-[var(--surface-panel)] border-b border-gray-200 dark:border-gray-800 shadow-sm">
+          <div className="sticky left-0 z-30 flex bg-gray-50 dark:bg-[var(--surface-panel)] border-r border-gray-200 dark:border-gray-800 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">
             <div className="w-64 p-3 text-sm font-bold text-gray-500 uppercase tracking-wider">Task</div>
             <div className="w-32 p-3 text-sm font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 dark:border-gray-800">Member</div>
             <div className="w-40 p-3 text-sm font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 dark:border-gray-800">Date</div>
@@ -96,7 +102,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ tasks, onTaskSelect 
             const stickyColor = !isCustom ? getStickyStyle(String(task.id), task.color) : null;
             return (
               <div key={task.id} className="flex hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-gray-800/50 group/row">
-                <div className="sticky left-0 z-10 flex bg-white dark:bg-[#16181D] group-hover/row:bg-gray-50 dark:group-hover/row:bg-[#1E212B] transition-colors border-r border-gray-200 dark:border-gray-800 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">
+                <div className="sticky left-0 z-10 flex bg-white dark:bg-[#16181D] group-hover/row:bg-gray-50 dark:group-hover/row:bg-[var(--surface-panel)] transition-colors border-r border-gray-200 dark:border-gray-800 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">
                   <div className="w-64 p-3 flex items-center gap-2 overflow-hidden cursor-pointer" onClick={() => onTaskSelect(task)}>
                     <div
                       className="w-2 h-2 rounded-full flex-shrink-0"

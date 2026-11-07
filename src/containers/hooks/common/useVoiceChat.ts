@@ -1,3 +1,11 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/common/useVoiceChat.ts
+ * 마이크 스트림·참여자·WebRTC peer·시그널링 소켓을 관리하는 음성 채팅 훅입니다.
+ * 소켓은 offer/answer/ICE 등 연결 협상 정보를 전달하며 실제 음성은 WebRTC 트랙으로 전달됩니다.
+ * 입장 시 장치 권한이 필요하고 퇴장/언마운트 시 트랙·peer·소켓을 닫아야 마이크가 계속 켜져 있지 않습니다.
+ * 현재 STUN만 설정되어 있고 TURN은 없습니다. mock의 입장 상태는 실제 음성 연결 성공을 뜻하지 않습니다.
+ */
+
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_CONFIG, getWebSocketUrl } from '@/src/models/api/config';
 import type { SignalData, VoiceChatError, VoiceChatErrorType } from '@/src/models/types';

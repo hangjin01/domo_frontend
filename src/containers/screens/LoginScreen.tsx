@@ -1,8 +1,15 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/LoginScreen.tsx
+ * 이메일/비밀번호 입력, 제출 중 상태, 실패 메시지를 담당하는 로그인 화면입니다.
+ * 성공 후 사용자 컨텍스트 갱신과 상위 이동 콜백을 연결합니다. mock 안내 계정은 실제 학교 가입 규칙의 예외인 데모 계정입니다.
+ */
+
 'use client';
 
 import React, { useState } from 'react';
 import { Mascot } from '@/src/views/common';
 import { login } from '@/src/models/api';
+import { API_CONFIG } from '@/src/models/api/config';
 import { ArrowRight, Loader2, Mail, Lock } from 'lucide-react';
 
 interface LoginScreenProps {
@@ -62,7 +69,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onGoTo
                 </div>
                 <input
                     type="email"
-                    placeholder="학교 이메일"
+                    placeholder={API_CONFIG.USE_MOCK ? '이메일' : '학교 이메일'}
                     className="w-full pl-12 pr-4 py-4 rounded-2xl text-sm font-medium transition-all"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -108,7 +115,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onGoTo
 
           <div className="mt-8 text-center space-y-3">
             <p className="text-xs text-gray-400 dark:text-gray-500">
-              전주대학교 계정으로 로그인하세요
+              {API_CONFIG.USE_MOCK ? '로컬 데모: test@gmail.com / 1234' : '전주대학교 계정으로 로그인하세요'}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               계정이 없으신가요?{' '}

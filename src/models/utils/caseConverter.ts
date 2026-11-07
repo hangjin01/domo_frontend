@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/models/utils/caseConverter.ts
+ * snake_case↔camelCase 이름을 변환하고 객체/배열의 키를 재귀적으로 정규화합니다.
+ * 소켓/HTTP의 필드 이름 차이를 줄이지만 누락 필드를 만들어 주거나 응답 구조를 검증하는 스키마는 아닙니다.
+ */
+
 // src/models/utils/caseConverter.ts
 // Snake Case ↔ Camel Case 재귀 변환 유틸리티
 

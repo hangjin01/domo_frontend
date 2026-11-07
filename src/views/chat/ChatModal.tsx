@@ -1,5 +1,13 @@
+/**
+ * [파일 안내] frontend/src/views/chat/ChatModal.tsx
+ * 도크에서 여는 채팅 모달입니다. 열림 상태에 맞춰 이력과 연결 수명을 관리하고 메시지를 보냅니다.
+ * ChatView와 같은 API/소켓 훅을 사용하지만 별도 뷰 상태를 가집니다. 닫힌 모달의 연결·타이머 정리를 확인하세요.
+ */
+
 // src/views/chat/ChatModal.tsx
 'use client';
+
+import { API_CONFIG } from '@/src/models/api/config';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -126,7 +134,7 @@ export function ChatModal({
                         <div>
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[180px]">{projectName}</h3>
                             <span className={`text-[10px] font-medium ${isConnected ? 'text-green-500' : 'text-gray-400'}`}>
-                                {isConnected ? '연결됨' : '연결 중...'}
+                                {API_CONFIG.USE_MOCK ? '로컬 데모 · 이 브라우저에만 저장' : isConnected ? '연결됨' : '연결 중...'}
                             </span>
                         </div>
                     </div>

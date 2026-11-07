@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/voice/VoiceChatModal.tsx
+ * 음성 채널의 입장 상태·참여자·장치/오류 안내 및 통화 제어를 보여 줍니다.
+ * 실제 연결 자원은 useVoiceChat이 관리합니다. mock 참여자는 실제 원격 마이크 스트림이 아닙니다.
+ */
+
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';

@@ -1,3 +1,10 @@
+/**
+ * [파일 안내] frontend/src/lib/contexts/UserContext.tsx
+ * 여러 페이지가 공유하는 현재 로그인 사용자 상태를 제공합니다. UserProvider가 getMyInfo를 호출하고 useUser로 소비합니다.
+ * refreshUser는 로그인/프로필 변경 뒤 재조회용, clearUser는 로그아웃 후 메모리 상태 제거용입니다.
+ * 컨텍스트는 편의 상태이지 보안 경계가 아닙니다. 실제 API 권한은 서버 세션으로 다시 확인해야 합니다.
+ */
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';

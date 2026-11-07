@@ -1,7 +1,13 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/community/useCommunitySocket.ts
+ * 전역 커뮤니티의 게시글/댓글 변경 이벤트를 구독하고 콜백으로 뷰 갱신을 요청합니다.
+ * 프로젝트 게시판 소켓과 다른 범위입니다. mock에서는 연결하지 않으며 실제 연결은 재시도와 종료 정리가 필요합니다.
+ */
+
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { getWebSocketUrl } from '@/src/models/api/config';
+import { API_CONFIG, getWebSocketUrl } from '@/src/models/api/config';
 import type { SocketConnectionState } from '@/src/models/types';
 
 const RECONNECT_INTERVALS = [1000, 2000, 4000, 8000, 16000, 30000];
@@ -95,6 +101,7 @@ export function useCommunitySocket(options: UseCommunitySocketOptions) {
     }, []);
 
     const connect = useCallback(() => {
+        if (API_CONFIG.USE_MOCK) return;
         if (!enabled) return;
         if (socketRef.current?.readyState === WebSocket.CONNECTING ||
             socketRef.current?.readyState === WebSocket.OPEN) return;

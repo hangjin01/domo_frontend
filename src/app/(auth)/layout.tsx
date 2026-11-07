@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/app/(auth)/layout.tsx
+ * 로그인/회원가입 등 인증 화면을 감싸며 이미 로그인한 사용자의 이동을 처리합니다.
+ * UserContext의 로딩/사용자 상태에 따라 렌더링 또는 라우팅을 결정합니다. 클라이언트 보호는 서버 권한 검증을 대신하지 않습니다.
+ */
+
 'use client';
 
 import { useEffect } from 'react';

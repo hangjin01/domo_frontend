@@ -1,3 +1,11 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/common/usePendingSync.ts
+ * 화면의 낙관적 변경을 지연 저장하는 큐입니다. 연속 이동을 합치고 단일 변경/카드 위치 배치를 구분합니다.
+ * 기본 debounce는 400ms, 재시도는 최대 3회·기본 1000ms 간격입니다. UI 표시 상태와 ref에 보관한 실행 대상의 역할이 다릅니다.
+ * 서버 응답이 늦게 도착해 더 최신 편집을 덮어쓰지 않도록 변경 ID와 처리 중 항목을 구분합니다.
+ * 실패 스냅샷, retryFailed/flush, 언마운트 정리까지 읽어야 저장 완료 시점을 판단할 수 있습니다. WebSocket 재접속과는 별개입니다.
+ */
+
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';

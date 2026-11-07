@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/common/useAudioAnalyser.ts
+ * Web Audio 분석기로 입력 스트림의 음량을 읽어 발화 여부/시각화에 사용할 값을 만듭니다.
+ * MediaStream과 분석 노드, 반복 프레임의 수명을 구분합니다. 분석을 멈출 때 프레임과 오디오 자원 정리가 필요합니다.
+ */
+
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface UseAudioAnalyserOptions {

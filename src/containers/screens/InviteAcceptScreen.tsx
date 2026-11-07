@@ -1,3 +1,10 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/InviteAcceptScreen.tsx
+ * URL 토큰의 초대 정보를 조회하고 미로그인 사용자의 로그인/가입 및 초대 수락 흐름을 조립합니다.
+ * 인라인 로그인 뒤 UserContext를 다시 읽어 보호 페이지 이동 시 사용자 상태가 뒤처지지 않게 합니다.
+ * mock 초대 API는 아직 고정 응답 중심입니다. 화면 성공 표시와 실제 팀원 저장/권한 부여를 구분하세요.
+ */
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -14,6 +21,7 @@ import {
     EyeOff
 } from 'lucide-react';
 import { getInvitationInfo, acceptInvitation, getCurrentUser, login } from '@/src/models/api';
+import { useUser } from '@/src/lib/contexts/UserContext';
 
 interface InviteAcceptScreenProps {
     token: string;
@@ -23,6 +31,7 @@ type ScreenState = 'loading' | 'info' | 'login' | 'accepting' | 'success' | 'err
 
 export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({ token }) => {
     const router = useRouter();
+    const { refreshUser } = useUser();
     const [state, setState] = useState<ScreenState>('loading');
     const [inviteInfo, setInviteInfo] = useState<{
         workspace_name: string;
@@ -72,6 +81,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({ token })
 
         try {
             await login(email, password);
+            await refreshUser();
             setIsLoggedIn(true);
             setState('info');
         } catch (error: any) {
@@ -122,7 +132,7 @@ export const InviteAcceptScreen: React.FC<InviteAcceptScreenProps> = ({ token })
                 </div>
 
                 {/* 카드 */}
-                <div className="bg-white dark:bg-[#1E212B] rounded-2xl shadow-xl border border-gray-200 dark:border-white/10 overflow-hidden">
+                <div className="bg-white dark:bg-[var(--surface-panel)] rounded-2xl shadow-xl border border-gray-200 dark:border-white/10 overflow-hidden">
                     {/* 로딩 상태 */}
                     {state === 'loading' && (
                         <div className="p-12 flex flex-col items-center justify-center">

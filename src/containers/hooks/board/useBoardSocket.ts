@@ -1,8 +1,16 @@
+/**
+ * [파일 안내] frontend/src/containers/hooks/board/useBoardSocket.ts
+ * 프로젝트 보드 WebSocket의 연결·메시지 변환·heartbeat·재연결을 관리하는 훅입니다.
+ * 서버 snake_case 카드/컬럼 데이터를 화면 타입으로 바꾼 뒤 전달받은 onTask/onColumn/onConnection 콜백을 실행합니다.
+ * ref는 최신 콜백과 연결 객체를 보관하고 state는 연결 상태를 화면에 전달합니다. 수동 종료와 비정상 종료를 구분합니다.
+ * 로컬 mock에서는 실제 소켓을 열지 않습니다. 서버 이벤트 계약/권한 문제가 해결됐다는 뜻은 아닙니다.
+ */
+
 // src/containers/hooks/board/useBoardSocket.ts
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { getWebSocketUrl } from '@/src/models/api/config';
+import { API_CONFIG, getWebSocketUrl } from '@/src/models/api/config';
 import { snakeToCamelDeep } from '@/src/models/utils/caseConverter';
 import type {
   Task,
@@ -250,7 +258,7 @@ function transformConnectionToConnection(conn: BackendConnectionSocketData, fall
     from: conn.from ?? conn.from_card_id ?? 0,
     to: conn.to ?? conn.to_card_id ?? 0,
     boardId: resolvedBoardId,  // [핵심] 백엔드 board_id 사용
-    style: (conn.style as 'solid' | 'dashed') || 'solid',
+    style: (conn.style as 'solid' | 'dashed' | 'arrow') || 'solid',
     shape: (conn.shape as 'bezier' | 'straight') || 'bezier',
     sourceHandle: (conn.sourceHandle || conn.source_handle || 'right') as 'left' | 'right',
     targetHandle: (conn.targetHandle || conn.target_handle || 'left') as 'left' | 'right',
@@ -498,6 +506,7 @@ export function useBoardSocket(options: UseBoardSocketOptions): UseBoardSocketRe
    * WebSocket 연결 시작
    */
   const connect = useCallback(() => {
+    if (API_CONFIG.USE_MOCK) return;
     if (!enabled || !projectId) {
       return;
     }

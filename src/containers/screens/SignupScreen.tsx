@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/containers/screens/SignupScreen.tsx
+ * 학교 이메일 계정 생성 폼입니다. 입력 검증과 API 오류를 표시하고 성공하면 인증 화면으로 이동시킵니다.
+ * 가입 성공과 이메일 인증 완료는 서로 다른 상태입니다. 비밀번호/인증 코드를 로그에 출력하지 마세요.
+ */
+
 'use client';
 
 import React, { useState } from 'react';

@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/app/(app)/layout.tsx
+ * 로그인한 사용자만 업무 화면을 볼 수 있게 감싸는 레이아웃입니다.
+ * UserContext의 로딩/사용자 상태에 따라 렌더링 또는 라우팅을 결정합니다. 클라이언트 보호는 서버 권한 검증을 대신하지 않습니다.
+ */
+
 'use client';
 
 import { useEffect } from 'react';

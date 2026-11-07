@@ -1,3 +1,9 @@
+/**
+ * [파일 안내] frontend/src/views/calendar/CalendarView.tsx
+ * 카드의 날짜를 월 달력에 배치하고 날짜/카드 선택을 상위 콜백으로 알립니다.
+ * 독립 Schedule 테이블 관리 화면이 아니라 현재 Task 날짜를 시각화하는 뷰입니다. 날짜 문자열 해석과 빈 날짜 처리를 확인하세요.
+ */
+
 'use client';
 
 import React, { useState } from 'react';
@@ -45,7 +51,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onTaskSelect 
             <div
               key={t.id}
               onClick={() => onTaskSelect(t)}
-              className="text-xs bg-white dark:bg-[#2c333a] border border-gray-200 dark:border-gray-700 p-1.5 rounded truncate cursor-pointer hover:border-domo-primary hover:shadow-sm transition-all text-gray-700 dark:text-gray-300"
+              className="text-xs bg-white dark:bg-[var(--surface-raised)] border border-gray-200 dark:border-gray-700 p-1.5 rounded truncate cursor-pointer hover:border-domo-primary hover:shadow-sm transition-all text-gray-700 dark:text-gray-300"
             >
               {t.title}
             </div>
@@ -76,7 +82,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onTaskSelect 
       </header>
       <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden flex-1">
         {['일', '월', '화', '수', '목', '금', '토'].map(day => (
-          <div key={day} className="bg-gray-100 dark:bg-[#1E212B] p-2 text-center text-sm font-bold text-gray-500">
+          <div key={day} className="bg-gray-100 dark:bg-[var(--surface-panel)] p-2 text-center text-sm font-bold text-gray-500">
             {day}
           </div>
         ))}

@@ -1,6 +1,53 @@
+/**
+ * [파일 안내] frontend/src/models/api/post.ts
+ * 담당 범위: 프로젝트 게시판과 전역 커뮤니티의 글 CRUD·댓글 생성/삭제.
+ * 호출 흐름: 화면/훅 → 이 모듈 → 로컬 저장/샘플 또는 공통 HTTP 래퍼 → 응답을 화면 타입으로 반환합니다.
+ * 두 게시판의 저장 범위를 분리합니다. 프로젝트 글은 JSON, 전역 글 이미지 업로드는 FormData 경로를 사용합니다.
+ * 함수의 성공 응답과 실제 기능 지원 여부는 같지 않습니다. 미구현/제약은 docs/05-recovery-and-backlog.md를 함께 확인하세요.
+ */
+
 import type { Post, PostCreateRequest, PostUpdateRequest, PostComment, PostCommentCreateRequest } from '../types';
 import { API_CONFIG, apiFetch, apiUpload, mockDelay } from './config';
 import { MOCK_POSTS } from './mock-data';
+import { fileToDataUrl, mockId, readMock, writeMock } from './mock-store';
+import { requireMockUser } from './mock-auth';
+
+type PostScope = 'community' | 'project';
+// 전역 글은 project_id 없이, 프로젝트 글은 ID를 유지한 채 서로 다른 키에서 읽습니다.
+// 기본 샘플의 본문이 같더라도 이후 생성/수정/삭제는 각 영역에 독립적으로 적용됩니다.
+function mockPosts(scope: PostScope): Post[] {
+    const seed = scope === 'community' ? MOCK_POSTS.map(post => ({ ...post, project_id: undefined })) : MOCK_POSTS;
+    return readMock(`posts:${scope}`, seed);
+}
+function savePost(scope: PostScope, post: Post): Post {
+    // 같은 ID의 이전 글을 제거하고 새 값을 넣습니다. 조회 시 created_at 기준으로 다시 정렬합니다.
+    const posts = mockPosts(scope).filter(existing => existing.id !== post.id);
+    writeMock(`posts:${scope}`, [...posts, post]);
+    return post;
+}
+function findPost(scope: PostScope, id: number): Post {
+    const post = mockPosts(scope).find(post => post.id === id);
+    if (!post) throw new Error('게시글을 찾을 수 없습니다.');
+    return post;
+}
+function removePost(scope: PostScope, id: number): void {
+    findPost(scope, id);
+    writeMock(`posts:${scope}`, mockPosts(scope).filter(post => post.id !== id));
+}
+function saveComment(scope: PostScope, postId: number, content: string): PostComment {
+    // 댓글은 해당 글의 comments에 포함되어 저장됩니다. 작성자 정보는 로그인 세션에서 가져옵니다.
+    const post = findPost(scope, postId);
+    const user = requireMockUser();
+    const comment: PostComment = { id: mockId(), post_id: postId, user_id: user.id,
+        content, created_at: new Date().toISOString(), user };
+    savePost(scope, { ...post, comments: [...(post.comments || []), comment] });
+    return comment;
+}
+function removeComment(scope: PostScope, id: number): void {
+    const post = mockPosts(scope).find(post => post.comments?.some(comment => comment.id === id));
+    if (!post) throw new Error('댓글을 찾을 수 없습니다.');
+    savePost(scope, { ...post, comments: post.comments!.filter(comment => comment.id !== id) });
+}
 
 // ============================================
 // 게시판 API
@@ -13,7 +60,7 @@ import { MOCK_POSTS } from './mock-data';
 export async function getProjectPosts(projectId: number): Promise<Post[]> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
-        return MOCK_POSTS.filter(p => p.project_id === projectId).sort((a, b) =>
+        return mockPosts('project').filter(p => p.project_id === projectId).sort((a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
     }
@@ -40,7 +87,7 @@ export async function getProjectPosts(projectId: number): Promise<Post[]> {
 export async function getCommunityPosts(): Promise<Post[]> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
-        return MOCK_POSTS.filter(p => !p.project_id || p.project_id === 1).sort((a, b) =>
+        return mockPosts('community').sort((a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
     }
@@ -66,17 +113,18 @@ export async function getCommunityPosts(): Promise<Post[]> {
 export async function createProjectPost(projectId: number, data: PostCreateRequest): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(600);
+        const user = requireMockUser();
         const newPost: Post = {
-            id: Date.now(),
+            id: mockId(),
             project_id: projectId,
-            user_id: 1,
+            user_id: user.id,
             title: data.title,
             content: data.content,
             created_at: new Date().toISOString(),
-            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as Post['user'],
+            user,
             comments: []
         };
-        return newPost;
+        return savePost('project', newPost);
     }
 
     // 프로젝트 게시글은 JSON 전송 (파일 업로드 미지원)
@@ -96,18 +144,18 @@ export async function createProjectPost(projectId: number, data: PostCreateReque
 export async function createCommunityPost(data: PostCreateRequest): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(600);
+        const user = requireMockUser();
         const newPost: Post = {
-            id: Date.now(),
-            project_id: 1,
-            user_id: 1,
+            id: mockId(),
+            user_id: user.id,
             title: data.title,
             content: data.content,
-            image_url: data.file ? URL.createObjectURL(data.file) : undefined,
+            image_url: data.file ? await fileToDataUrl(data.file) : undefined,
             created_at: new Date().toISOString(),
-            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as Post['user'],
+            user,
             comments: []
         };
-        return newPost;
+        return savePost('community', newPost);
     }
 
     const formData = new FormData();
@@ -127,9 +175,7 @@ export async function createCommunityPost(data: PostCreateRequest): Promise<Post
 export async function getCommunityPost(postId: number): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(300);
-        const post = MOCK_POSTS.find(p => p.id === postId);
-        if (!post) throw new Error('Post not found');
-        return post;
+        return findPost('community', postId);
     }
     return apiFetch<Post>(`/community/${postId}`);
 }
@@ -141,9 +187,7 @@ export async function getCommunityPost(postId: number): Promise<Post> {
 export async function getProjectPost(postId: number): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(300);
-        const post = MOCK_POSTS.find(p => p.id === postId);
-        if (!post) throw new Error('Post not found');
-        return post;
+        return findPost('project', postId);
     }
     return apiFetch<Post>(`/posts/${postId}`);
 }
@@ -155,11 +199,10 @@ export async function getProjectPost(postId: number): Promise<Post> {
 export async function updateCommunityPost(postId: number, data: PostUpdateRequest & { file?: File; removeImage?: boolean }): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(500);
-        const post = MOCK_POSTS.find(p => p.id === postId);
-        if (!post) throw new Error('Post not found');
-
-        const updatedPost = { ...post, ...data, updated_at: new Date().toISOString() };
-        return updatedPost;
+        const post = findPost('community', postId);
+        const { file, removeImage, ...updates } = data;
+        const image_url = file ? await fileToDataUrl(file) : removeImage ? undefined : post.image_url;
+        return savePost('community', { ...post, ...updates, image_url, updated_at: new Date().toISOString() });
     }
 
     const formData = new FormData();
@@ -178,9 +221,8 @@ export async function updateCommunityPost(postId: number, data: PostUpdateReques
 export async function updateProjectPost(postId: number, data: PostUpdateRequest): Promise<Post> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(500);
-        const post = MOCK_POSTS.find(p => p.id === postId);
-        if (!post) throw new Error('Post not found');
-        return { ...post, ...data, updated_at: new Date().toISOString() };
+        const post = findPost('project', postId);
+        return savePost('project', { ...post, ...data, updated_at: new Date().toISOString() });
     }
 
     return apiFetch<Post>(`/posts/${postId}`, {
@@ -196,8 +238,7 @@ export async function updateProjectPost(postId: number, data: PostUpdateRequest)
 export async function deleteCommunityPost(postId: number): Promise<{ message: string }> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
-        const index = MOCK_POSTS.findIndex(p => p.id === postId);
-        if (index === -1) throw new Error('Post not found');
+        removePost('community', postId);
         return { message: '게시글이 삭제되었습니다.' };
     }
 
@@ -213,8 +254,7 @@ export async function deleteCommunityPost(postId: number): Promise<{ message: st
 export async function deleteProjectPost(postId: number): Promise<{ message: string }> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
-        const index = MOCK_POSTS.findIndex(p => p.id === postId);
-        if (index === -1) throw new Error('Post not found');
+        removePost('project', postId);
         return { message: '게시글이 삭제되었습니다.' };
     }
 
@@ -230,15 +270,7 @@ export async function deleteProjectPost(postId: number): Promise<{ message: stri
 export async function createCommunityComment(postId: number, data: PostCommentCreateRequest): Promise<PostComment> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
-        const newComment: PostComment = {
-            id: Date.now(),
-            post_id: postId,
-            user_id: 1,
-            content: data.content,
-            created_at: new Date().toISOString(),
-            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as PostComment['user']
-        };
-        return newComment;
+        return saveComment('community', postId, data.content);
     }
 
     return apiFetch<PostComment>(`/community/${postId}/comments`, {
@@ -254,15 +286,7 @@ export async function createCommunityComment(postId: number, data: PostCommentCr
 export async function createProjectComment(postId: number, data: PostCommentCreateRequest): Promise<PostComment> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(400);
-        const newComment: PostComment = {
-            id: Date.now(),
-            post_id: postId,
-            user_id: 1,
-            content: data.content,
-            created_at: new Date().toISOString(),
-            user: { id: 1, name: '김도모', email: 'student@jj.ac.kr' } as PostComment['user']
-        };
-        return newComment;
+        return saveComment('project', postId, data.content);
     }
 
     return apiFetch<PostComment>(`/posts/${postId}/comments`, {
@@ -278,6 +302,7 @@ export async function createProjectComment(postId: number, data: PostCommentCrea
 export async function deleteCommunityComment(commentId: number): Promise<{ message: string }> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(300);
+        removeComment('community', commentId);
         return { message: '댓글이 삭제되었습니다.' };
     }
 
@@ -293,6 +318,7 @@ export async function deleteCommunityComment(commentId: number): Promise<{ messa
 export async function deleteProjectComment(commentId: number): Promise<{ message: string }> {
     if (API_CONFIG.USE_MOCK) {
         await mockDelay(300);
+        removeComment('project', commentId);
         return { message: '댓글이 삭제되었습니다.' };
     }
 
